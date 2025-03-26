@@ -1,0 +1,8 @@
+qiskit
+numpy
+qiskit_ibm_runtime
+qiskit_aer
+scipy
+matplotlib
+pylatexenc
+notebook
