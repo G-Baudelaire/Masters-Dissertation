@@ -1,17 +1,10 @@
-# General imports
-import numpy as np
+import math
 
-# Pre-defined ansatz circuit and operator class for Hamiltonian
-from qiskit.circuit.library import EfficientSU2
-from qiskit.quantum_info import SparsePauliOp
 
-# SciPy minimizer routine
-from scipy.optimize import minimize
 
-# Plotting functions
-import matplotlib.pyplot as plt
-# runtime imports
-from qiskit_ibm_runtime import QiskitRuntimeService, Session
-from qiskit_ibm_runtime import EstimatorV2 as Estimator
-from qiskit_aer import AerSimulator
-from ansatz_library import custom_linear_cnot
+
+
+if __name__ == '__main__':
+    for n in [15, 21, 57, 123, 253, 511, 1011, 2047]:
+        p, q = bits_needed(n)
+        print(p + q - 2)

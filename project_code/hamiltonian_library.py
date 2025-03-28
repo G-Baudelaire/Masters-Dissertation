@@ -1,142 +1,90 @@
-import itertools
-
-import numpy as np
 from qiskit.quantum_info import SparsePauliOp
-
-EXAMPLE_HAMILTONIAN = SparsePauliOp.from_list(
-    [("YZ", 0.3980), ("ZI", -0.3980), ("ZZ", -0.0113), ("XX", 0.1810)]
-)
+import itertools
+import numpy as np
 
 
-def custom_hamiltonian(number_of_qubits_p, number_of_qubits_q, number):
+# def custom_hamiltonian(number_of_qubits_p, number_of_qubits_q, number):
+#     total_qubits = number_of_qubits_p + number_of_qubits_q
+#
+#     hamiltonian_terms = []
+#     coefficients = []
+#
+#     # Constant term: n^2 * I
+#     hamiltonian_terms.append('I' * total_qubits)
+#     coefficients.append(number ** 2)
+#
+#     # -2n * pq term
+#
+#     for j, k in itertools.product(range(number_of_qubits_p), range(number_of_qubits_q)):
+#         coefficient = -2 * number * (2 ** (j + k))
+#         op_list = ['I'] * total_qubits
+#         op_list[j] = 'Z'
+#         op_list[number_of_qubits_p + k] = 'Z'
+#         hamiltonian_terms.append(''.join(op_list))
+#         coefficients.append(coefficient)
+#
+#     # (pq)^2 term
+#     generator = itertools.product(
+#         range(number_of_qubits_p), range(number_of_qubits_q), range(number_of_qubits_p), range(number_of_qubits_q)
+#     )
+#
+#     for j, k, l, m in generator:
+#         coefficient = 2 ** (j + k + l + m)
+#         op_list = ['I'] * total_qubits
+#         op_list[j] = 'Z'
+#         op_list[number_of_qubits_p + k] = 'Z'
+#         op_list[l] = 'Z'
+#         op_list[number_of_qubits_p + m] = 'Z'
+#         hamiltonian_terms.append(''.join(op_list))
+#         coefficients.append(coefficient)
+#
+#     return SparsePauliOp(hamiltonian_terms, coeffs=np.array(coefficients, dtype=float))
+
+def projector(index, total_qubits):
+    identity = "I" * total_qubits
+    pauli = ["I"] * total_qubits
+    pauli[index] = "Z"
+
+    return 0.5 * SparsePauliOp.from_list(
+        [
+            (identity, 1.0),
+            ("".join(pauli), -1.0)
+        ]
+    )
+
+
+def custom_hamiltonian(n, number_of_bits_p, number_of_bits_q):
+    number_of_qubits_p = number_of_bits_p - 1
+    number_of_qubits_q = number_of_bits_q - 1
     total_qubits = number_of_qubits_p + number_of_qubits_q
+    identity = SparsePauliOp.from_list([("I" * total_qubits, 1.0)])
 
-    hamiltonian_terms = []
-    coefficients = []
+    # Constant n**2
+    const_term = n ** 2
+    hamiltonian = SparsePauliOp.from_list([("I" * total_qubits, const_term)])
 
-    # Constant term: n^2 * I
-    hamiltonian_terms.append('I' * total_qubits)
-    coefficients.append(number ** 2)
+    # 2-qubit term
+    generator = itertools.product(range(number_of_qubits_p), range(number_of_qubits_q))
+    for j, k in generator:
+        coeff = -2 * n * (2 ** (j + k))
+        pauli_z_pj = projector(j - 1, total_qubits) if j != 0 else identity
+        pauli_z_qk = projector(number_of_qubits_p + k - 1, total_qubits) if k != 0 else identity
+        hamiltonian += coeff * pauli_z_pj.compose(pauli_z_qk, front=True)
 
-    # -2n * pq term
-
-    for j, k in itertools.product(range(number_of_qubits_p), range(number_of_qubits_q)):
-        coefficient = -2 * number * (2 ** (j + k))
-        op_list = ['I'] * total_qubits
-        op_list[j] = 'Z'
-        op_list[number_of_qubits_p + k] = 'Z'
-        hamiltonian_terms.append(''.join(op_list))
-        coefficients.append(coefficient)
-
-    # (pq)^2 term
+    # 4-qubit term
     generator = itertools.product(
         range(number_of_qubits_p), range(number_of_qubits_q), range(number_of_qubits_p), range(number_of_qubits_q)
     )
 
     for j, k, l, m in generator:
-        coefficient = 2 ** (j + k + l + m)
-        op_list = ['I'] * total_qubits
-        op_list[j] = 'Z'
-        op_list[number_of_qubits_p + k] = 'Z'
-        op_list[l] = 'Z'
-        op_list[number_of_qubits_p + m] = 'Z'
-        hamiltonian_terms.append(''.join(op_list))
-        coefficients.append(coefficient)
+        coeff = 2 ** (j + k + l + m)
+        pauli_z_pj = projector(j - 1, total_qubits) if j != 0 else identity
+        pauli_z_qk = projector(number_of_qubits_p + k - 1, total_qubits) if k != 0 else identity
+        pauli_z_pl = projector(l - 1, total_qubits) if l != 0 else identity
+        pauli_z_qm = projector(number_of_qubits_p + m - 1, total_qubits) if m != 0 else identity
+        hamiltonian += coeff * (pauli_z_pj.compose(pauli_z_qk, front=True)
+                                .compose(pauli_z_pl, front=True)
+                                .compose(pauli_z_qm, front=True))
 
-    return SparsePauliOp(hamiltonian_terms, coeffs=np.array(coefficients, dtype=float))
+    return hamiltonian
 
-
-import itertools
-import numpy as np
-from qiskit.quantum_info import SparsePauliOp
-
-
-def custom_hamiltonian_fixed_lsb(number_of_qubits_p, number_of_qubits_q, number):
-    # LSBs are fixed, so we reduce the number of variable qubits by 1 each
-    var_p = number_of_qubits_p - 1
-    var_q = number_of_qubits_q - 1
-    total_qubits = var_p + var_q
-
-    hamiltonian_terms = []
-    coefficients = []
-
-    # --- CONSTANT term: n^2 ---
-    hamiltonian_terms.append('I' * total_qubits)
-    coefficients.append(number ** 2)
-
-    # --- -2n * pq term ---
-    # LSB contribution: 2^(0+0) = 1
-    const_term = -2 * number * (2 ** 0)
-
-    # Cross terms with variable bits
-    for j, k in itertools.product(range(var_p), range(var_q)):
-        coeff = -2 * number * (2 ** (j + 1 + k + 1))  # +1 to account for missing LSBs
-        op_list = ['I'] * total_qubits
-        op_list[j] = 'Z'
-        op_list[var_p + k] = 'Z'
-        hamiltonian_terms.append(''.join(op_list))
-        coefficients.append(coeff)
-
-    # Add -2n * fixed LSB (cross terms with constants)
-    for j in range(var_p):
-        coeff = -2 * number * (2 ** (j + 1 + 0))
-        op_list = ['I'] * total_qubits
-        op_list[j] = 'Z'
-        hamiltonian_terms.append(''.join(op_list))
-        coefficients.append(coeff)
-
-    for k in range(var_q):
-        coeff = -2 * number * (2 ** (0 + k + 1))
-        op_list = ['I'] * total_qubits
-        op_list[var_p + k] = 'Z'
-        hamiltonian_terms.append(''.join(op_list))
-        coefficients.append(coeff)
-
-    # Add constant term from LSB * LSB
-    coefficients[0] += const_term
-
-    # --- (pq)^2 term ---
-
-    # Constant from (LSB * LSB)^2 = 2^0 * 2^0 * 2^0 * 2^0 = 1
-    coefficients[0] += 1
-
-    # Cross terms with variable bits
-    for j, k, l, m in itertools.product(range(var_p), range(var_q), range(var_p), range(var_q)):
-        coeff = 2 ** (j + 1 + k + 1 + l + 1 + m + 1)
-        op_list = ['I'] * total_qubits
-        op_list[j] = 'Z'
-        op_list[var_p + k] = 'Z'
-        op_list[l] = 'Z'
-        op_list[var_p + m] = 'Z'
-        hamiltonian_terms.append(''.join(op_list))
-        coefficients.append(coeff)
-
-    # Mixed terms: (j,k, l/m = LSB)
-    for j, k, l in itertools.product(range(var_p), range(var_q), range(var_p)):
-        coeff = 2 ** (j + 1 + k + 1 + l + 1 + 0)
-        op_list = ['I'] * total_qubits
-        op_list[j] = 'Z'
-        op_list[var_p + k] = 'Z'
-        op_list[l] = 'Z'
-        hamiltonian_terms.append(''.join(op_list))
-        coefficients.append(coeff)
-
-    for j, k, m in itertools.product(range(var_p), range(var_q), range(var_q)):
-        coeff = 2 ** (j + 1 + k + 1 + 0 + m + 1)
-        op_list = ['I'] * total_qubits
-        op_list[j] = 'Z'
-        op_list[var_p + k] = 'Z'
-        op_list[var_p + m] = 'Z'
-        hamiltonian_terms.append(''.join(op_list))
-        coefficients.append(coeff)
-
-    for j, k in itertools.product(range(var_p), range(var_q)):
-        coeff = 2 ** (j + 1 + k + 1 + 0 + 0)
-        op_list = ['I'] * total_qubits
-        op_list[j] = 'Z'
-        op_list[var_p + k] = 'Z'
-        hamiltonian_terms.append(''.join(op_list))
-        coefficients.append(coeff)
-
-    # Return final SparsePauliOp
-    return SparsePauliOp(hamiltonian_terms, coeffs=np.array(coefficients, dtype=float))
