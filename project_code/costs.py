@@ -64,7 +64,7 @@ class CVaRCostFunction(OptimiserImplementor):
 
         return result, cost_history_dictionary
 
-    def _cost_function(self, parameters, backend, hamiltonian,ansatz_isa, cost_history):
+    def _cost_function(self, parameters, backend, hamiltonian, ansatz_isa, cost_history):
         alpha = 0.1
         shots = 1024
         bound_circuit = ansatz_isa.assign_parameters(parameters)
@@ -104,7 +104,8 @@ class CVaRCostFunction(OptimiserImplementor):
             value += coefficient * term_value
         return value
 
-    def compute_cvar(self, eigenvalues:np.ndarray, alpha):
+    def compute_cvar(self, eigenvalues: np.ndarray, alpha):
         eigenvalues.sort()
         cutoff = max(1, int(eigenvalues.size * alpha))
         return np.mean(eigenvalues[:cutoff])
+

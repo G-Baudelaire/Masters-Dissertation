@@ -62,6 +62,7 @@ class SumOfSquaresHamiltonian(HamiltonianImplementation):
                        .compose(pauli_z_qm, front=True))
         return result
 
+
 class OptimisedSumOfSquaresHamiltonian(HamiltonianImplementation):
     def get_hamiltonian(self, n, p_bits, q_bits, *args, **kwargs):
         if args or kwargs:
