@@ -1,10 +1,7 @@
-from qiskit import transpile
-
 from open_factor.ansatz_handlers import AnsatzHandler
 from open_factor.history_handlers import HistoryHandler
 from open_factor.optimisation_handlers import EigensolverOptimisationHandler
 from open_factor.hamiltonian_handlers import HamiltonianHandler
-from utils import Utils
 
 
 class VariationalEigensolverFactoriser:
