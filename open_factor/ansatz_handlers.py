@@ -1,15 +1,18 @@
 from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterVector
 
+from utils import Utils
 
-class AnsatzImplementation:
-    def get_ansatz(self, p_bits: int, q_bits: int) -> QuantumCircuit:
+
+class AnsatzHandler:
+    def get_ansatz(self, n):
         raise NotImplementedError()
 
 
-class LinearCNotAnsatz(AnsatzImplementation):
-    def get_ansatz(self, p_bits, q_bits):
-        number_of_qubits = p_bits + q_bits
+class SobhaniAnsatzHandler(AnsatzHandler):
+    def get_ansatz(self, n):
+        p_bits, q_bits = Utils.bits_needed(n)
+        number_of_qubits = p_bits + q_bits - 2
         quantum_circuit = QuantumCircuit(number_of_qubits)
         parameters = ParameterVector("θ", number_of_qubits * 3)
 
@@ -17,7 +20,6 @@ class LinearCNotAnsatz(AnsatzImplementation):
         self._second_layer(number_of_qubits, quantum_circuit, parameters)
         self._third_layer(number_of_qubits, quantum_circuit, parameters)
 
-        # Do not measure here; add measurements only in simulation
         return quantum_circuit
 
     def _first_layer(self, number_of_qubits, quantum_circuit, parameters):
@@ -42,8 +44,3 @@ class LinearCNotAnsatz(AnsatzImplementation):
     def _third_layer(self, number_of_qubits, quantum_circuit, parameters):
         for i in range(number_of_qubits):
             quantum_circuit.ry(parameters[(2 * number_of_qubits) + i], i)
-
-
-class OptimisedLinearCNotAnsatz(LinearCNotAnsatz):
-    def get_ansatz(self, p_bits, q_bits):
-        return super().get_ansatz(p_bits - 1, q_bits - 1)
