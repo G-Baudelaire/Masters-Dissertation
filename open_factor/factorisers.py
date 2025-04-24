@@ -1,6 +1,6 @@
 from open_factor.ansatz_handlers import AnsatzHandler
 from open_factor.history_handlers import HistoryHandler
-from open_factor.optimisation_handlers import EigensolverOptimisationHandler
+from open_factor.optimisation_handlers import EigensolverOptimisationHandler, OptimisationHandler
 from open_factor.hamiltonian_handlers import HamiltonianHandler
 
 
@@ -24,7 +24,7 @@ class VariationalEigensolverFactoriser:
         ansatz = self._ansatz_handler.get_ansatz(n)
         result, cost_history = self._optimisation_implementor.optimise_parameters(self._backend, ansatz, hamiltonian)
         self._history_handler.store_history(cost_history)
-        self._run_circuit(n, ansatz, result.x)
+        return self._run_circuit(n, ansatz, result.x)
 
     def _run_circuit(self, n, ansatz, optimal_parameters):
         raise NotImplementedError()
@@ -34,7 +34,7 @@ class VariationalAlgorithmFactoriser:
     def __init__(
             self,
             ansatz_handler: AnsatzHandler,
-            optimisation_handler: EigensolverOptimisationHandler,
+            optimisation_handler: OptimisationHandler,
             history_handler: HistoryHandler,
             backend
     ):
@@ -45,9 +45,9 @@ class VariationalAlgorithmFactoriser:
 
     def factorise(self, n):
         ansatz = self._ansatz_handler.get_ansatz(n)
-        result, cost_history = self._optimisation_implementor.optimise_parameters(self._backend, ansatz)
+        result, cost_history = self._optimisation_implementor.optimise_parameters(n, self._backend, ansatz)
         self._history_handler.store_history(cost_history)
-        self._run_circuit(n, ansatz, result.x)
+        return self._run_circuit(n, ansatz, result.x)
 
     def _run_circuit(self, n, ansatz, optimal_parameters):
         raise NotImplementedError()

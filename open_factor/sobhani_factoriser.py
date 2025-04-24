@@ -1,51 +1,41 @@
 from itertools import product
 
-from qiskit import transpile, QuantumCircuit, generate_preset_pass_manager
-from qiskit.circuit import ParameterVector
+import numpy as np
+from qiskit import transpile, generate_preset_pass_manager
 from qiskit.quantum_info import SparsePauliOp
 from scipy.optimize import minimize
 
-from open_factor.ansatz_handlers import AnsatzHandler
+from open_factor.ansatz_handlers import LinearCNOTAnsatzHandler, AnsatzHandler
 from open_factor.factorisers import VariationalEigensolverFactoriser
 from open_factor.hamiltonian_handlers import HamiltonianHandler
-from open_factor.history_handlers import HistoryHandler
+from open_factor.history_handlers import EnergyGrapherHistoryHandeler, HistoryHandler
 from open_factor.optimisation_handlers import EigensolverOptimisationHandler
+from open_factor.utils import Utils
 
 
 class SobhaniFactoriser(VariationalEigensolverFactoriser):
-    def __init__(self, backend):
+    def __init__(
+            self,
+            ansatz_handler: AnsatzHandler,
+            optimisation_handler: EigensolverOptimisationHandler,
+            history_handler:HistoryHandler,
+            backend
+    ):
         super().__init__(
             hamiltonian_handler=SobhaniHamiltonian(),
-            ansatz_handler=SobhaniAnsatzHandler(),
-            optimisation_handler=SobhaniOptimisationHandler(),
-            history_handler=SobhaniHistoryHandler(),
+            ansatz_handler=ansatz_handler,
+            optimisation_handler=optimisation_handler,
+            history_handler=history_handler,
             backend=backend
         )
 
     def _run_circuit(self, n, ansatz, optimal_parameters):
-        ATTEMPTS = 100
         p_bits, q_bits = Utils.bits_needed(n)
-        successes = 0
-        solutions = set()
-        for i in range(ATTEMPTS):
-            result = self._run_optimised_circuit(ansatz, optimal_parameters, self._backend)
-            factors = self._check_bit_strings(n, result.get_counts().keys(), p_bits - 1, q_bits - 1)
+        ansatz_isa = generate_preset_pass_manager(target=self._backend.target, optimization_level=3).run(ansatz)
+        result = Utils.run_optimised_circuit(ansatz_isa, optimal_parameters, self._backend)
+        factors = Utils.check_bit_strings(n, result.get_counts().keys(), p_bits - 1, q_bits - 1)
 
-            if factors is not None:
-                solutions.update(factors)
-                successes += 1
-        print(f"Success Rate: {(successes / ATTEMPTS) * 100} %\nSolutions: {solutions}")
-
-    def _check_bit_strings(self, n, bit_strings, p_qubits, q_qubits):
-        def clean_bitstring_pair(p_bitstring, q_bitstring):
-            shift_add_one = lambda x: (int(x, 2) << 1) + 1
-            return (shift_add_one(p_bitstring), shift_add_one(q_bitstring))
-
-        pairs = (clean_bitstring_pair(bit_string[:p_qubits], bit_string[-q_qubits:]) for bit_string in bit_strings)
-        for p, q in pairs:
-            if p * q == n:
-                return p, q
-        return None
+        return factors
 
     def _run_optimised_circuit(self, ansatz, optimal_params, backend):
         bound_circuit = ansatz.assign_parameters(optimal_params)
@@ -109,50 +99,8 @@ class SobhaniHamiltonian(HamiltonianHandler):
                 ("".join(pauli), -1.0)
             ]
         )
-class SobhaniHistoryHandler(HistoryHandler):
-    def store_history(self, cost_history):
-        fig, ax = plt.subplots()
-        ax.plot(range(cost_history["iters"]), cost_history["cost_history"])
-        ax.set_xlabel("Iterations")
-        ax.set_ylabel("Cost")
-        plt.draw()
 
 
-class SobhaniAnsatzHandler(AnsatzHandler):
-    def get_ansatz(self, n):
-        p_bits, q_bits = Utils.bits_needed(n)
-        number_of_qubits = p_bits + q_bits - 2
-        quantum_circuit = QuantumCircuit(number_of_qubits)
-        parameters = ParameterVector("θ", number_of_qubits * 3)
-
-        self._first_layer(number_of_qubits, quantum_circuit, parameters)
-        self._second_layer(number_of_qubits, quantum_circuit, parameters)
-        self._third_layer(number_of_qubits, quantum_circuit, parameters)
-
-        return quantum_circuit
-
-    def _first_layer(self, number_of_qubits, quantum_circuit, parameters):
-        for i in range(number_of_qubits):
-            quantum_circuit.h(i)
-            quantum_circuit.ry(parameters[i], i)
-
-        # CNOTs
-        for i in range(number_of_qubits - 1):
-            quantum_circuit.cx(i, i + 1)
-        quantum_circuit.barrier()
-
-    def _second_layer(self, number_of_qubits, quantum_circuit, parameters):
-        for i in range(number_of_qubits):
-            quantum_circuit.ry(parameters[(1 * number_of_qubits) + i], i)
-
-        # CNOTs
-        for i in range(number_of_qubits - 1):
-            quantum_circuit.cx(i, i + 1)
-        quantum_circuit.barrier()
-
-    def _third_layer(self, number_of_qubits, quantum_circuit, parameters):
-        for i in range(number_of_qubits):
-            quantum_circuit.ry(parameters[(2 * number_of_qubits) + i], i)
 class SobhaniOptimisationHandler(EigensolverOptimisationHandler):
     def optimise_parameters(self, backend, ansatz, hamiltonian):
         pass_manager = generate_preset_pass_manager(target=backend.target, optimization_level=3)
@@ -171,7 +119,7 @@ class SobhaniOptimisationHandler(EigensolverOptimisationHandler):
         return result, cost_history_dictionary
 
     def _cost_function(self, parameters, backend, hamiltonian, ansatz_isa, cost_history):
-        alpha = 0.5
+        alpha = 1
         shots = 1024
         bound_circuit = ansatz_isa.assign_parameters(parameters)
         bound_circuit.measure_all()
@@ -213,6 +161,3 @@ class SobhaniOptimisationHandler(EigensolverOptimisationHandler):
         eigenvalues.sort()
         cutoff = max(1, int(eigenvalues.size * alpha))
         return np.mean(eigenvalues[:cutoff])
-
-    def _initialise_cost_history_dict(self):
-        return {"prev_vector": None, "iters": 0, "cost_history": []}
