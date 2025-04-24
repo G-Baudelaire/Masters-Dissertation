@@ -1,3 +1,4 @@
+# tests/test_factorisers.py
 import csv
 import os
 
@@ -6,99 +7,60 @@ from qiskit_aer import AerSimulator
 
 from open_factor.ansatz_handlers import LinearCNOTAnsatzHandler
 from open_factor.history_handlers import BlankHistoryHandler
+from open_factor.sobhani_factoriser import SobhaniFactoriser
 from open_factor.inverse_factoriser import InverseFactoriser
-from open_factor.sobhani_factoriser import SobhaniFactoriser, SobhaniOptimisationHandler
+from open_factor.logarithmic_factoriser import LogarithmicFactoriser
+from open_factor.simple_squared_error_factoriser import SimpleSquaredErrorFactoriser
+
+# all the classes you want to test,
+# plus for Sobhani we have an extra optimiser param
+FACTORISERS = [
+    (SobhaniFactoriser, {"optimiser": "cobyla"}, "accuracy_sobhani.csv"),
+    (InverseFactoriser, {}, "accuracy_inverse.csv"),
+    (LogarithmicFactoriser, {}, "accuracy_logarithmic.csv"),
+    (SimpleSquaredErrorFactoriser, {}, "accuracy_simple_squared.csv"),
+]
 
 
-class TestSobhaniFactoriser:
-    ATTEMPTS = 5
-    RESULTS_CSV = "sobhani_accuracy_results.csv"
+@pytest.fixture(scope="module", autouse=True)
+def cleanup_results_dir():
+    os.makedirs("results", exist_ok=True)
+    yield
+    # (optionally) clean up afterwards
 
-    @classmethod
-    def setup_class(cls):
-        # if the file exists, remove it so we start fresh
-        if os.path.exists(cls.RESULTS_CSV):
-            os.remove(cls.RESULTS_CSV)
 
-        # open the file and write header
-        cls._csvfile = open(cls.RESULTS_CSV, "w", newline="")
-        cls._writer = csv.writer(cls._csvfile)
-        cls._writer.writerow(["ansatz", "optimiser", "n", "accuracy"])
+@pytest.mark.parametrize("FactoriserClass, extra_kwargs, csv_name", FACTORISERS)
+@pytest.mark.parametrize("n", [11 * 13, 15, 21, 77])
+def test_factoriser_accuracy(FactoriserClass, extra_kwargs, csv_name, n):
+    """
+    Run each FactoriserClass on several n values, write accuracies
+    into its own CSV in ./results/.
+    """
+    # on first invocation create header
+    path = os.path.join("results", csv_name)
+    write_header = not os.path.exists(path)
 
-    @classmethod
-    def teardown_class(cls):
-        cls._csvfile.close()
+    with open(path, "a", newline="") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(["ansatz", "optimiser", "n", "accuracy"])
 
-    @pytest.mark.parametrize(
-        "ansatz_handler, optimiser, n",
-        [
-            (LinearCNOTAnsatzHandler(), "cobyla", 15),
-            (LinearCNOTAnsatzHandler(), "powell", 15),
-            # (LinearCNOTAnsatzHandler(), "cobyla", 21),
-            # (LinearCNOTAnsatzHandler(), "powell", 21),
-            # (LinearCNOTAnsatzHandler(), "cobyla", 77),
-        ],
-    )
-    def test_sobhani_accuracy(self, ansatz_handler, optimiser, n):
-        acc = self.run(ansatz_handler, optimiser, n)
-        # append this result to our CSV
-        self._writer.writerow([str(type(ansatz_handler)), optimiser, n, f"{acc:.4f}"])
-        # no assert: we’re just collecting data
-
-    def run(self, ansatz_handler, optimiser, n):
-        factoriser = SobhaniFactoriser(
-            ansatz_handler=ansatz_handler,
-            optimiser=optimiser,
+        # instantiate and run
+        fac = FactoriserClass(
+            ansatz_handler=LinearCNOTAnsatzHandler(),
             history_handler=BlankHistoryHandler(),
-            backend=AerSimulator()
+            backend=AerSimulator(),
+            **extra_kwargs
         )
+        # say 5 attempts to estimate accuracy
+        ATTEMPTS = 5
+        successes = sum(1 for _ in range(ATTEMPTS) if fac.factorise(n))
+        accuracy = successes / ATTEMPTS
 
-        successes = sum(1 for _ in range(self.ATTEMPTS) if factoriser.factorise(n))
-        return successes / self.ATTEMPTS
-
-
-class TestInverseFactoriser:
-    ATTEMPTS = 5
-    RESULTS_CSV = "inverse_accuracy_results.csv"
-
-    @classmethod
-    def setup_class(cls):
-        # if the file exists, remove it so we start fresh
-        if os.path.exists(cls.RESULTS_CSV):
-            os.remove(cls.RESULTS_CSV)
-
-        # open the file and write header
-        cls._csvfile = open(cls.RESULTS_CSV, "w", newline="")
-        cls._writer = csv.writer(cls._csvfile)
-        cls._writer.writerow(["ansatz", "optimiser", "n", "accuracy"])
-
-    @classmethod
-    def teardown_class(cls):
-        cls._csvfile.close()
-
-    @pytest.mark.parametrize(
-        "ansatz_handler, optimiser, n",
-        [
-            (LinearCNOTAnsatzHandler(), "cobyla", 15),
-            (LinearCNOTAnsatzHandler(), "powell", 15),
-            # (LinearCNOTAnsatzHandler(), "cobyla", 21),
-            # (LinearCNOTAnsatzHandler(), "powell", 21),
-            # (LinearCNOTAnsatzHandler(), "cobyla", 77),
-        ],
-    )
-    def test_inverse_accuracy(self, ansatz_handler, optimiser, n):
-        acc = self.run(ansatz_handler, optimiser, n)
-        # append this result to our CSV
-        self._writer.writerow([str(type(ansatz_handler)), optimiser, n, f"{acc:.4f}"])
-        # no assert: we’re just collecting data
-
-    def run(self, ansatz_handler, optimiser, n):
-        factoriser = InverseFactoriser(
-            ansatz_handler=ansatz_handler,
-            history_handler=BlankHistoryHandler(),
-            optimiser=optimiser,
-            backend=AerSimulator()
-        )
-
-        successes = sum(1 for _ in range(self.ATTEMPTS) if factoriser.factorise(n))
-        return successes / self.ATTEMPTS
+        writer.writerow([
+            FactoriserClass.__name__,
+            extra_kwargs.get("optimiser", ""),
+            n,
+            f"{accuracy:.4f}"
+        ])
+    # no assert: we’re just collecting data

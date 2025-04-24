@@ -53,11 +53,6 @@ class InverseOptimisationHandler(OptimisationHandler):
 
         return result, cost_history_dictionary
 
-    def _compile_circuit(self, ansatz_isa, parameters, backend):
-        bound_circuit = ansatz_isa.assign_parameters(parameters)
-        bound_circuit.measure_all()
-        return transpile(bound_circuit, backend=backend)
-
     def _cost_function(self, parameters, n, p_qubits, q_qubits, backend, ansatz_isa, cost_history):
         result = Utils.run_optimised_circuit(ansatz_isa, parameters, backend)
         total = 0
@@ -68,7 +63,5 @@ class InverseOptimisationHandler(OptimisationHandler):
             total += score * quantity
         energy = total / 1024
 
-        cost_history["iters"] += 1
-        cost_history["prev_vector"] = parameters
-        cost_history["cost_history"].append(energy)
+        self._update_cost_history(cost_history, parameters, energy)
         return energy

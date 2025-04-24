@@ -1,3 +1,5 @@
+from abc import abstractmethod
+
 from open_factor.ansatz_handlers import AnsatzHandler
 from open_factor.history_handlers import HistoryHandler
 from open_factor.optimisation_handlers import EigensolverOptimisationHandler, OptimisationHandler
@@ -49,5 +51,6 @@ class VariationalAlgorithmFactoriser:
         self._history_handler.store_history(cost_history)
         return self._run_circuit(n, ansatz, result.x)
 
+    @abstractmethod
     def _run_circuit(self, n, ansatz, optimal_parameters):
         raise NotImplementedError()
