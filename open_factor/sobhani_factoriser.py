@@ -17,14 +17,14 @@ class SobhaniFactoriser(VariationalEigensolverFactoriser):
     def __init__(
             self,
             ansatz_handler: AnsatzHandler,
-            optimisation_handler: EigensolverOptimisationHandler,
-            history_handler:HistoryHandler,
+            optimiser: str,
+            history_handler: HistoryHandler,
             backend
     ):
         super().__init__(
             hamiltonian_handler=SobhaniHamiltonian(),
             ansatz_handler=ansatz_handler,
-            optimisation_handler=optimisation_handler,
+            optimisation_handler=SobhaniOptimisationHandler(optimiser),
             history_handler=history_handler,
             backend=backend
         )
@@ -113,7 +113,7 @@ class SobhaniOptimisationHandler(EigensolverOptimisationHandler):
             self._cost_function,
             initial_parameters,
             args=(backend, hamiltonian, ansatz_isa, cost_history_dictionary),
-            method="cobyla",
+            method=self._optimiser,
         )
 
         return result, cost_history_dictionary
@@ -132,7 +132,6 @@ class SobhaniOptimisationHandler(EigensolverOptimisationHandler):
         cost_history["iters"] += 1
         cost_history["prev_vector"] = parameters
         cost_history["cost_history"].append(energy)
-        print(f"Iters. done: {cost_history['iters']} [Current cost: {energy}]")
         return energy
 
     def bit_value(self, bit, operator, term_value):

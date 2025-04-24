@@ -5,19 +5,24 @@ from qiskit import generate_preset_pass_manager, transpile
 from qiskit.result import Result
 from scipy.optimize import minimize
 
-from open_factor.ansatz_handlers import LinearCNOTAnsatzHandler
-from open_factor.history_handlers import EnergyGrapherHistoryHandeler
+from open_factor.ansatz_handlers import LinearCNOTAnsatzHandler, AnsatzHandler
+from open_factor.history_handlers import EnergyGrapherHistoryHandeler, HistoryHandler
 from open_factor.utils import Utils
 from open_factor.factorisers import VariationalAlgorithmFactoriser
 from open_factor.optimisation_handlers import OptimisationHandler
 
 
 class InverseFactoriser(VariationalAlgorithmFactoriser):
-    def __init__(self, backend):
+    def __init__(
+            self,
+            ansatz_handler: AnsatzHandler,
+            history_handler: HistoryHandler,
+            optimiser: str,
+            backend):
         super().__init__(
-            ansatz_handler=LinearCNOTAnsatzHandler(),
-            optimisation_handler=InverseOptimisationHandler(),
-            history_handler=EnergyGrapherHistoryHandeler(),
+            ansatz_handler=ansatz_handler,
+            optimisation_handler=InverseOptimisationHandler(optimiser),
+            history_handler=history_handler,
             backend=backend
         )
 
@@ -27,9 +32,6 @@ class InverseFactoriser(VariationalAlgorithmFactoriser):
         result = Utils.run_optimised_circuit(ansatz_isa, optimal_parameters, self._backend)
         factors = Utils.check_bit_strings(n, result.get_counts().keys(), p_bits - 1, q_bits - 1)
         return factors
-
-
-
 
 
 class InverseOptimisationHandler(OptimisationHandler):
@@ -46,7 +48,7 @@ class InverseOptimisationHandler(OptimisationHandler):
             self._cost_function,
             initial_parameters,
             args=(n, p_qubits, q_qubits, backend, ansatz_isa, cost_history_dictionary),
-            method="cobyla",
+            method=self._optimiser,
         )
 
         return result, cost_history_dictionary
@@ -69,5 +71,4 @@ class InverseOptimisationHandler(OptimisationHandler):
         cost_history["iters"] += 1
         cost_history["prev_vector"] = parameters
         cost_history["cost_history"].append(energy)
-        print(f"Iters. done: {cost_history['iters']} [Current cost: {energy}]")
         return energy
