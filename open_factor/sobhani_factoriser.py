@@ -6,42 +6,18 @@ from qiskit.quantum_info import SparsePauliOp
 from scipy.optimize import minimize
 
 from open_factor.ansatz_handlers import LinearCNOTAnsatzHandler, AnsatzHandler
-from open_factor.factorisers import VariationalEigensolverFactoriser
+from open_factor.factorisers import EigensolverFactoriser
 from open_factor.hamiltonian_handlers import HamiltonianHandler
 from open_factor.history_handlers import EnergyGrapherHistoryHandeler, HistoryHandler
 from open_factor.optimisation_handlers import EigensolverOptimisationHandler
 from open_factor.utils import Utils
 
 
-class SobhaniFactoriser(VariationalEigensolverFactoriser):
-    def __init__(
-            self,
-            ansatz_handler: AnsatzHandler,
-            optimiser: str,
-            history_handler: HistoryHandler,
-            backend
-    ):
-        super().__init__(
-            hamiltonian_handler=SobhaniHamiltonian(),
-            ansatz_handler=ansatz_handler,
-            optimisation_handler=SobhaniOptimisationHandler(optimiser),
-            history_handler=history_handler,
-            backend=backend
-        )
-
-    def _run_circuit(self, n, ansatz, optimal_parameters):
-        p_bits, q_bits = Utils.bits_needed(n)
-        ansatz_isa = generate_preset_pass_manager(target=self._backend.target, optimization_level=3).run(ansatz)
-        result = Utils.run_optimised_circuit(ansatz_isa, optimal_parameters, self._backend)
-        factors = Utils.check_bit_strings(n, result.get_counts().keys(), p_bits - 1, q_bits - 1)
-
-        return factors
-
-    def _run_optimised_circuit(self, ansatz, optimal_params, backend):
-        bound_circuit = ansatz.assign_parameters(optimal_params)
-        bound_circuit.measure_all()
-        compiled_circuit = transpile(bound_circuit, backend=backend)
-        return backend.run(compiled_circuit, shots=1024).result()
+class SobhaniFactoriser(EigensolverFactoriser):
+    def __init__(self, ansatz_handler: AnsatzHandler, optimiser: str, history_handler: HistoryHandler, backend):
+        super().__init__(hamiltonian_handler=SobhaniHamiltonian(), ansatz_handler=ansatz_handler,
+                         optimisation_handler=SobhaniOptimisationHandler(optimiser), history_handler=history_handler,
+                         backend=backend)
 
 
 class SobhaniHamiltonian(HamiltonianHandler):

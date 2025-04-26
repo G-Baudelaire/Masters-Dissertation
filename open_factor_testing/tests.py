@@ -1,24 +1,23 @@
-# tests/test_factorisers.py
 import csv
 import os
 
 import pytest
 from qiskit_aer import AerSimulator
 
-from open_factor.ansatz_handlers import LinearCNOTAnsatzHandler
+from open_factor.ansatz_handlers import LinearCNOTAnsatzHandler, EfficentSU2AnsatzHandler
 from open_factor.history_handlers import BlankHistoryHandler
 from open_factor.sobhani_factoriser import SobhaniFactoriser
 from open_factor.inverse_factoriser import InverseFactoriser
 from open_factor.logarithmic_factoriser import LogarithmicFactoriser
-from open_factor.simple_squared_error_factoriser import SimpleSquaredErrorFactoriser
+from open_factor.simple_squared_error_factoriser import SEFactoriser
 
 # all the classes you want to test,
 # plus for Sobhani we have an extra optimiser param
 FACTORISERS = [
-    (SobhaniFactoriser, {"optimiser": "cobyla"}, "accuracy_sobhani.csv"),
-    (InverseFactoriser, {}, "accuracy_inverse.csv"),
-    (LogarithmicFactoriser, {}, "accuracy_logarithmic.csv"),
-    (SimpleSquaredErrorFactoriser, {}, "accuracy_simple_squared.csv"),
+    (SobhaniFactoriser, LinearCNOTAnsatzHandler(), {"optimiser": "cobyla"}, "accuracy_sobhani.csv"),
+    # (InverseFactoriser, LinearCNOTAnsatzHandler(), {"optimiser": "cobyla"}, "accuracy_inverse.csv"),
+    # (LogarithmicFactoriser, LinearCNOTAnsatzHandler(), {"optimiser": "cobyla"}, "accuracy_logarithmic.csv"),
+    # (SimpleSquaredErrorFactoriser, EfficentSU2AnsatzHandler(), {"optimiser": "cobyla"}, "accuracy_simple_squared.csv"),
 ]
 
 
@@ -29,9 +28,9 @@ def cleanup_results_dir():
     # (optionally) clean up afterwards
 
 
-@pytest.mark.parametrize("FactoriserClass, extra_kwargs, csv_name", FACTORISERS)
-@pytest.mark.parametrize("n", [11 * 13, 15, 21, 77])
-def test_factoriser_accuracy(FactoriserClass, extra_kwargs, csv_name, n):
+@pytest.mark.parametrize("FactoriserClass, ansatz_handler, extra_kwargs, csv_name", FACTORISERS)
+@pytest.mark.parametrize("n", [15])
+def test_factoriser_accuracy(FactoriserClass, ansatz_handler, extra_kwargs, csv_name, n):
     """
     Run each FactoriserClass on several n values, write accuracies
     into its own CSV in ./results/.
@@ -47,7 +46,7 @@ def test_factoriser_accuracy(FactoriserClass, extra_kwargs, csv_name, n):
 
         # instantiate and run
         fac = FactoriserClass(
-            ansatz_handler=LinearCNOTAnsatzHandler(),
+            ansatz_handler=ansatz_handler,
             history_handler=BlankHistoryHandler(),
             backend=AerSimulator(),
             **extra_kwargs

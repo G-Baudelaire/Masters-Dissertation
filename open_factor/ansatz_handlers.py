@@ -1,10 +1,14 @@
+from abc import abstractmethod
+
 from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterVector
+from qiskit.circuit.library import EfficientSU2
 
 from open_factor.utils import Utils
 
 
 class AnsatzHandler:
+    @abstractmethod
     def get_ansatz(self, n) -> QuantumCircuit:
         raise NotImplementedError()
 
@@ -44,3 +48,10 @@ class LinearCNOTAnsatzHandler(AnsatzHandler):
     def _third_layer(self, number_of_qubits, quantum_circuit, parameters):
         for i in range(number_of_qubits):
             quantum_circuit.ry(parameters[(2 * number_of_qubits) + i], i)
+
+
+class EfficentSU2AnsatzHandler(AnsatzHandler):
+    def get_ansatz(self, n):
+        p_bits, q_bits = Utils.bits_needed(n)
+        number_of_qubits = p_bits + q_bits - 2
+        return EfficientSU2(num_qubits=number_of_qubits, reps=1)
