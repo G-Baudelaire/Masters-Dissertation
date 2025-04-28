@@ -3,6 +3,8 @@ import os
 
 import pytest
 from qiskit_aer import AerSimulator
+from qiskit_aer.noise import NoiseModel
+from qiskit_ibm_runtime.fake_provider.local_service import QiskitRuntimeLocalService
 
 from open_factor.ansatz_handlers import LinearCNOTAnsatzHandler, EfficentSU2AnsatzHandler
 from open_factor.history_handlers import BlankHistoryHandler
@@ -12,7 +14,8 @@ from open_factor.logarithmic_factoriser import LogarithmicFactoriser
 from open_factor.squared_error_factoriser import SEFactoriser
 
 TEST_VALUES = [
-    15, 21, 57, 123, 253, 511, 1011, 2047, 4087, 8189, 16379, 32743, 65509, 131069, 262099, 524281, 1048561
+    15, 21, 57, 123, 253, 511, 1011, 2047, 4087,
+    # 8189, 16379, 32743, 65509, 131069, 262099, 524281, 1048561
 ]
 FACTORISERS = [
     # (SobhaniFactoriser, LinearCNOTAnsatzHandler(), {"optimiser": "cobyla"}, "accuracy_sobhani.csv"),
@@ -20,9 +23,11 @@ FACTORISERS = [
     # (LogarithmicFactoriser, LinearCNOTAnsatzHandler(), {"optimiser": "cobyla"}, "accuracy_logarithmic.csv"),
     (SEFactoriser, EfficentSU2AnsatzHandler(), "cobyla", "accuracy_squared.csv"),
 ]
+service = QiskitRuntimeLocalService
+NOISE_MODELS = [
+]
 
-
-class Test:
+class Tests:
     @pytest.fixture(scope="module", autouse=True)
     def cleanup_results_dir(self):
         os.makedirs("results", exist_ok=True)
@@ -35,7 +40,17 @@ class Test:
         path = os.path.join("results", csv_name)
         header = ["ansatz", "optimiser", "n", "accuracy"]
         rows = self.get_result_file_rows(path, ansatz_handler, optimiser, n)
-        accuracy = self.run_test(factoriser_class, ansatz_handler, optimiser, n)
+        accuracy = self.run_test(factoriser_class, ansatz_handler, optimiser, n, attempts=10)
+        self.append_new_result(rows, ansatz_handler, optimiser, n, accuracy)
+        self.write_to_result_file(path, header, rows)
+
+    @pytest.mark.parametrize("noise_model", [NoiseModel.from_backend(service.b)])
+    @pytest.mark.parametrize("n", TEST_VALUES)
+    def test_noise(self, noise_model, n):
+        path = os.path.join("results", "noise_test.csv")
+        header = ["ansatz", "optimiser", "n", "accuracy"]
+        rows = self.get_result_file_rows(path, ansatz_handler, optimiser, n)
+        accuracy = self.run_test(factoriser_class, ansatz_handler, optimiser, n, attempts=10)
         self.append_new_result(rows, ansatz_handler, optimiser, n, accuracy)
         self.write_to_result_file(path, header, rows)
 

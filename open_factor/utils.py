@@ -18,11 +18,11 @@ class Utils:
         return shift_add_one(bitstring[:p_qubits]), shift_add_one(bitstring[-q_qubits:])
 
     @staticmethod
-    def run_optimised_circuit(ansatz_isa, optimal_params, backend):
+    def run_optimised_circuit(ansatz_isa, optimal_params, backend, shots=1024):
         bound_circuit = ansatz_isa.assign_parameters(optimal_params)
         bound_circuit.measure_all()
         compiled_circuit = transpile(bound_circuit, backend=backend)
-        return backend.run(compiled_circuit, shots=1024).result()
+        return backend.run(compiled_circuit, shots=shots).result()
 
     @staticmethod
     def check_bit_strings(n, bit_strings, p_qubits, q_qubits):

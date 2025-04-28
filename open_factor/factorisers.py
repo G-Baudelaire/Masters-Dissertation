@@ -22,7 +22,7 @@ class Factoriser:
     def _run_circuit(self, n, ansatz, optimal_parameters):
         p_bits, q_bits = Utils.bits_needed(n)
         ansatz_isa = generate_preset_pass_manager(target=self._backend.target, optimization_level=3).run(ansatz)
-        result = Utils.run_optimised_circuit(ansatz_isa, optimal_parameters, self._backend)
+        result = Utils.run_optimised_circuit(ansatz_isa, optimal_parameters, self._backend, shots=10000)
         factors = Utils.check_bit_strings(n, result.get_counts().keys(), p_bits - 1, q_bits - 1)
         return factors
 
@@ -54,4 +54,4 @@ class HybridFactoriser(Factoriser):
         ansatz = self._ansatz_handler.get_ansatz(n)
         result, cost_history = self._optimisation_implementor.optimise_parameters(n, self._backend, ansatz)
         self._history_handler.store_history(cost_history)
-        return self._run_circuit(n, ansatz, result.x)
+        return self._run_circuit(n, ansatz, result.x, )
