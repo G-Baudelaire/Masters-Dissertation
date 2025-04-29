@@ -8,6 +8,8 @@ from open_factor.utils import Utils
 
 
 class AnsatzHandler:
+    def __init__(self, reps=1):
+        self._reps = reps
     @abstractmethod
     def get_ansatz(self, n) -> QuantumCircuit:
         raise NotImplementedError()
@@ -54,4 +56,4 @@ class EfficentSU2AnsatzHandler(AnsatzHandler):
     def get_ansatz(self, n):
         p_bits, q_bits = Utils.bits_needed(n)
         number_of_qubits = p_bits + q_bits - 2
-        return EfficientSU2(num_qubits=number_of_qubits, reps=1)
+        return EfficientSU2(num_qubits=number_of_qubits, reps=self._reps)
