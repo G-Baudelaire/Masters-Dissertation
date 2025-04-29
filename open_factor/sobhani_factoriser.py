@@ -16,7 +16,7 @@ from open_factor.utils import Utils
 class SobhaniFactoriser(EigensolverFactoriser):
     def __init__(self, ansatz_handler: AnsatzHandler, optimiser: str, history_handler: HistoryHandler, backend):
         super().__init__(hamiltonian_handler=SobhaniHamiltonian(), ansatz_handler=ansatz_handler,
-                         optimisation_handler=SobhaniOptimisationHandler(optimiser), history_handler=history_handler,
+                         optimisation_handler=EigensolverOptimisationHandler(optimiser), history_handler=history_handler,
                          backend=backend)
 
 
@@ -78,22 +78,6 @@ class SobhaniHamiltonian(HamiltonianHandler):
 
 
 class SobhaniOptimisationHandler(EigensolverOptimisationHandler):
-    def optimise_parameters(self, hamiltonian, backend, ansatz):
-        pass_manager = generate_preset_pass_manager(target=backend.target, optimization_level=3)
-
-        ansatz_isa = pass_manager.run(ansatz)
-        initial_parameters = 2 * np.pi * np.random.random(ansatz.num_parameters)
-        cost_history_dictionary = self._initialise_cost_history_dict()
-
-        result = minimize(
-            self._cost_function,
-            initial_parameters,
-            args=(backend, hamiltonian, ansatz_isa, cost_history_dictionary),
-            method=self._optimiser,
-        )
-
-        return result, cost_history_dictionary
-
     def _cost_function(self, parameters, backend, hamiltonian, ansatz_isa, cost_history):
         alpha = 1
         shots = 1024

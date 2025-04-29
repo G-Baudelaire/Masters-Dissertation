@@ -9,6 +9,7 @@ from qiskit_ibm_runtime.fake_provider.local_service import QiskitRuntimeLocalSer
 
 from open_factor.ansatz_handlers import EfficentSU2AnsatzHandler
 from open_factor.history_handlers import BlankHistoryHandler, HistoryHandler
+from open_factor.sobhani_factoriser import SobhaniHamiltonian, SobhaniFactoriser
 from open_factor.squared_error_factoriser import SEFactoriser
 
 TEST_VALUES = [
@@ -27,6 +28,10 @@ NOISE_MODELS = [
 
 
 class Tests:
+    NOISELESS_FACTORISERS = (
+        SobhaniFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+        SEFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+    )
     RESULTS_PATH = "results"
 
     def save_to_csv(self, summary, file_name):
@@ -34,7 +39,7 @@ class Tests:
         summary.to_csv(out_csv, index=False, mode='w', header=True)
 
     @pytest.mark.parametrize(
-        "factoriser", (SEFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),)
+        "factoriser", NOISELESS_FACTORISERS
     )
     @pytest.mark.parametrize("semiprimes", [(15, 21, 35, 77), ])
     @pytest.mark.parametrize("csv_name", ["noiseless_baseline.csv"])
@@ -69,10 +74,62 @@ class Tests:
         ).reset_index()
 
         self.save_to_csv(summary, csv_name)
-        return summary
 
-    def optimiser_comparison(self, optimiser, n):
-        pass
+    @pytest.mark.parametrize("optimiser", ["cobyla", "powell"])
+    @pytest.mark.parametrize("n", [15, 21])
+    @pytest.mark.parametrize("csv_name", ["optimiser_comparison.csv"])
+    def test_optimiser_comparison(self, optimiser, n, csv_name):
+        records = []
+
+        factoriser = SEFactoriser(
+            EfficentSU2AnsatzHandler(),
+            optimiser,
+            HistoryHandler(),
+            AerSimulator()
+        )
+
+        for run_id in range(1):
+            factors = factoriser.factorise(n)
+            # pull out history
+            history_handler = factoriser.get_history_handler()
+            history = history_handler.get_history()
+            loop_times = factoriser.get_history_handler().get_loop_times()
+            total_optimisation_time = history_handler.get_total_optimisation_time()
+
+            # metrics
+            iterations = history["iters"]
+            final_energy = history["cost_history"][-1]
+            mean_loop_time = total_optimisation_time / len(loop_times)
+            success = (factors is not None)
+
+            records.append({
+                'n': n,
+                'optimiser': optimiser,
+                'run': run_id,
+                'iterations': iterations,
+                'final_energy': final_energy,
+                'mean_loop_time': mean_loop_time,
+                'success': success
+            })
+
+        # build a DataFrame and compute per-(n,optimiser) summaries
+        df = pd.DataFrame(records)
+        summary = (
+            df
+            .groupby(['n', 'optimiser'])
+            .agg(
+                mean_iterations=('iterations', 'mean'),
+                std_iterations=('iterations', 'std'),
+                mean_final_energy=('final_energy', 'mean'),
+                std_final_energy=('final_energy', 'std'),
+                mean_loop_time=('mean_loop_time', 'mean'),
+                std_loop_time=('mean_loop_time', 'std'),
+                success_rate=('success', 'mean')
+            )
+            .reset_index()
+        )
+        FileManagement.optimiser_save_to_csv(summary, csv_name)
+        # self.save_to_csv(summary, csv_name)
 
     def test_ansatz_circuit_depth(self, layers):
         pass
@@ -91,6 +148,38 @@ class Tests:
 
     def test_real_hardware_(self, n):
         pass
+
+
+class FileManagement:
+    RESULTS_PATH = "results"
+
+    @classmethod
+    def optimiser_save_to_csv(cls, summary: pd.DataFrame, file_name: str):
+        os.makedirs(cls.RESULTS_PATH, exist_ok=True)
+        out_csv = os.path.join(cls.RESULTS_PATH, file_name)
+
+        if os.path.exists(out_csv):
+            # load existing data
+            existing = pd.read_csv(out_csv)
+
+            # build a mask of rows to drop from existing:
+            # any existing row whose (n, optimiser) tuple appears in summary
+            to_drop = pd.concat([
+                existing["n"].eq(row.n) & existing["optimiser"].eq(row.optimiser)
+                for row in summary.itertuples()
+            ], axis=1).any(axis=1)
+
+            # keep only the non-matching rows
+            filtered = existing.loc[~to_drop]
+            # append the new summary row(s)
+            merged = pd.concat([filtered, summary], ignore_index=True)
+        else:
+            merged = summary
+
+        # write back, overwriting the file
+        merged.to_csv(out_csv, index=False)
+        print(
+            f"→ Updated {out_csv} with {len(summary)} row(s) for {list(summary[['n', 'optimiser']].itertuples(index=False, name=None))}")
 
 
 class _Tests:
