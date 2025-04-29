@@ -78,7 +78,7 @@ class SobhaniHamiltonian(HamiltonianHandler):
 
 
 class SobhaniOptimisationHandler(EigensolverOptimisationHandler):
-    def optimise_parameters(self, backend, ansatz, hamiltonian):
+    def optimise_parameters(self, hamiltonian, backend, ansatz):
         pass_manager = generate_preset_pass_manager(target=backend.target, optimization_level=3)
 
         ansatz_isa = pass_manager.run(ansatz)

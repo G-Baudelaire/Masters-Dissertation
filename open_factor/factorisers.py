@@ -26,6 +26,9 @@ class Factoriser:
         factors = Utils.check_bit_strings(n, result.get_counts().keys(), p_bits - 1, q_bits - 1)
         return factors
 
+    def get_history_handler(self):
+        return self._history_handler
+
 
 class EigensolverFactoriser(Factoriser):
     def __init__(
@@ -39,8 +42,8 @@ class EigensolverFactoriser(Factoriser):
     def factorise(self, n):
         hamiltonian = self._hamiltonian_handler.get_hamiltonian(n)
         ansatz = self._ansatz_handler.get_ansatz(n)
-        result, cost_history = self._optimisation_implementor.optimise_parameters(self._backend, ansatz, hamiltonian)
-        self._history_handler.store_history(cost_history)
+        result, cost_history = self._optimisation_implementor.optimise_parameters(hamiltonian, self._backend, ansatz)
+        self._history_handler.set_history(cost_history)
         return self._run_circuit(n, ansatz, result.x)
 
 
@@ -53,5 +56,5 @@ class HybridFactoriser(Factoriser):
     def factorise(self, n):
         ansatz = self._ansatz_handler.get_ansatz(n)
         result, cost_history = self._optimisation_implementor.optimise_parameters(n, self._backend, ansatz)
-        self._history_handler.store_history(cost_history)
+        self._history_handler.set_history(cost_history)
         return self._run_circuit(n, ansatz, result.x, )

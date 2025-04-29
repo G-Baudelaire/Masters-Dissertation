@@ -1,16 +1,14 @@
 import csv
 import os
 
+import pandas as pd
 import pytest
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel
 from qiskit_ibm_runtime.fake_provider.local_service import QiskitRuntimeLocalService
 
-from open_factor.ansatz_handlers import LinearCNOTAnsatzHandler, EfficentSU2AnsatzHandler
-from open_factor.history_handlers import BlankHistoryHandler
-from open_factor.sobhani_factoriser import SobhaniFactoriser
-from open_factor.inverse_factoriser import InverseFactoriser
-from open_factor.logarithmic_factoriser import LogarithmicFactoriser
+from open_factor.ansatz_handlers import EfficentSU2AnsatzHandler
+from open_factor.history_handlers import BlankHistoryHandler, HistoryHandler
 from open_factor.squared_error_factoriser import SEFactoriser
 
 TEST_VALUES = [
@@ -27,7 +25,75 @@ service = QiskitRuntimeLocalService
 NOISE_MODELS = [
 ]
 
+
 class Tests:
+    RESULTS_PATH = "results"
+
+    def save_to_csv(self, summary, file_name):
+        out_csv = os.path.join(self.RESULTS_PATH, file_name)
+        summary.to_csv(out_csv, index=False, mode='w', header=True)
+
+    @pytest.mark.parametrize(
+        "factoriser", (SEFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),)
+    )
+    @pytest.mark.parametrize("semiprimes", [(15, 21, 35, 77), ])
+    @pytest.mark.parametrize("csv_name", ["noiseless_baseline.csv"])
+    def test_noiseless_baseline(self, factoriser, semiprimes, csv_name):
+        # 4. Run the baseline test
+        records = []
+        for n in semiprimes:
+            for run_id in range(2):
+                factors = factoriser.factorise(n)
+
+                # Extract metrics
+                cost_history = factoriser.get_history_handler().get_history()
+                iterations = cost_history["iters"]
+                success = (factors is not None)
+
+                records.append({
+                    'n': n,
+                    'run': run_id,
+                    'iterations': iterations,
+                    "final_energy": cost_history["cost_history"][-1],
+                    'success': success
+                })
+
+        # 5. Aggregate results
+        df = pd.DataFrame(records)
+        summary = df.groupby('n').agg(
+            mean_iterations=('iterations', 'mean'),
+            std_iterations=('iterations', 'std'),
+            mean_final_energy=('final_energy', 'mean'),
+            std_final_energy=('final_energy', 'std'),
+            success_rate=('success', 'mean')
+        ).reset_index()
+
+        self.save_to_csv(summary, csv_name)
+        return summary
+
+    def optimiser_comparison(self, optimiser, n):
+        pass
+
+    def test_ansatz_circuit_depth(self, layers):
+        pass
+
+    def test_shot_dependence(self, shots):
+        pass
+
+    def test_noise_robustness(self, backend_noise_model):
+        pass
+
+    def test_scalability(self, n):
+        pass
+
+    def test_cvar_vs_standard_vqe(self, n):
+        pass
+
+    def test_real_hardware_(self, n):
+        pass
+
+
+class _Tests:
     @pytest.fixture(scope="module", autouse=True)
     def cleanup_results_dir(self):
         os.makedirs("results", exist_ok=True)
@@ -44,15 +110,15 @@ class Tests:
         self.append_new_result(rows, ansatz_handler, optimiser, n, accuracy)
         self.write_to_result_file(path, header, rows)
 
-    @pytest.mark.parametrize("noise_model", [NoiseModel.from_backend(service.b)])
-    @pytest.mark.parametrize("n", TEST_VALUES)
-    def test_noise(self, noise_model, n):
-        path = os.path.join("results", "noise_test.csv")
-        header = ["ansatz", "optimiser", "n", "accuracy"]
-        rows = self.get_result_file_rows(path, ansatz_handler, optimiser, n)
-        accuracy = self.run_test(factoriser_class, ansatz_handler, optimiser, n, attempts=10)
-        self.append_new_result(rows, ansatz_handler, optimiser, n, accuracy)
-        self.write_to_result_file(path, header, rows)
+    # @pytest.mark.parametrize("noise_model", [NoiseModel.from_backend(service.b)])
+    # @pytest.mark.parametrize("n", TEST_VALUES)
+    # def test_noise(self, noise_model, n):
+    #     path = os.path.join("results", "noise_test.csv")
+    #     header = ["ansatz", "optimiser", "n", "accuracy"]
+    #     rows = self.get_result_file_rows(path, ansatz_handler, optimiser, n)
+    #     accuracy = self.run_test(factoriser_class, ansatz_handler, optimiser, n, attempts=10)
+    #     self.append_new_result(rows, ansatz_handler, optimiser, n, accuracy)
+    #     self.write_to_result_file(path, header, rows)
 
     @staticmethod
     def run_test(factoriser_class, ansatz_handler, optimiser, n, attempts=1):
