@@ -7,6 +7,7 @@ from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel
 
 from open_factor.ansatz_handlers import EfficentSU2AnsatzHandler, AnsatzHandler
+from open_factor.exponential_penalty_factoriser import ExponentialFactoriser
 from open_factor.history_handlers import BlankHistoryHandler, HistoryHandler
 from open_factor.inverse_factoriser import InverseFactoriser
 from open_factor.logarithmic_factoriser import LogarithmicFactoriser
@@ -14,16 +15,20 @@ from open_factor.sobhani_factoriser import SobhaniHamiltonian, ExpectationSobhan
 from open_factor.squared_error_factoriser import SEFactoriser
 from qiskit_ibm_runtime import QiskitRuntimeService
 
+from open_factor.tanh_squared_factoriser import TanhSquaredFactoriser
+
 RESULTS_PATH = "results"
 SEMIPRIMES = (
-    15, 21, 57, 123, 253, 511, 1011, 2047, 4087, 8189, 16379, 32743,
-    # 65509, 131069, 262099, 524281, 1048561
+    15, 21, 57, 123, 253, 511, 1011, 2047, 4087, 8189, 16379,
+    # 32743, 65509, 131069, 262099, 524281, 1048561
 )
 NOISELESS_FACTORISERS = (
-    # SobhaniFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
-    SEFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
-    LogarithmicFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
-    InverseFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+    # ExpectationSobhaniFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+    # SEFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+    # LogarithmicFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+    # InverseFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+    TanhSquaredFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+    ExponentialFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
 )
 service = QiskitRuntimeService()
 REAL_BACKENDS = [
@@ -144,7 +149,7 @@ class Tests:
             AerSimulator()
         )
 
-        for run_id in range(50):
+        for run_id in range(10):
             factors = factoriser.factorise(n)
             # pull out history
             history_handler = factoriser.get_history_handler()
