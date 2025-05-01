@@ -1,9 +1,10 @@
-qiskit~=2.0.0
-numpy~=2.2.5
+qiskit
+numpy
 qiskit_ibm_runtime
-scipy~=1.15.2
-matplotlib~=3.10.1
+scipy
+matplotlib
 pylatexenc
 notebook
-pytest~=8.3.5
+pytest
 qiskit-aer
+pandas

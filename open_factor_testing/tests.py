@@ -1,4 +1,3 @@
-import csv
 import os
 from typing import Type
 
@@ -6,57 +5,59 @@ import pandas as pd
 import pytest
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel
-from qiskit_ibm_runtime.fake_provider.local_service import QiskitRuntimeLocalService
 
 from open_factor.ansatz_handlers import EfficentSU2AnsatzHandler, AnsatzHandler
 from open_factor.history_handlers import BlankHistoryHandler, HistoryHandler
-from open_factor.sobhani_factoriser import SobhaniHamiltonian, SobhaniFactoriser
+from open_factor.inverse_factoriser import InverseFactoriser
+from open_factor.logarithmic_factoriser import LogarithmicFactoriser
+from open_factor.sobhani_factoriser import SobhaniHamiltonian, ExpectationSobhaniFactoriser
 from open_factor.squared_error_factoriser import SEFactoriser
+from qiskit_ibm_runtime import QiskitRuntimeService
 
-TEST_VALUES = [15, 21, 57, 123, 253, 511, 1011, 2047, 4087, 8189, 16379, 32743, 65509, 131069, 262099, 524281, 1048561]
-FACTORISERS = [
-    # (SobhaniFactoriser, LinearCNOTAnsatzHandler(), {"optimiser": "cobyla"}, "accuracy_sobhani.csv"),
-    # (InverseFactoriser, LinearCNOTAnsatzHandler(), {"optimiser": "cobyla"}, "accuracy_inverse.csv"),
-    # (LogarithmicFactoriser, LinearCNOTAnsatzHandler(), {"optimiser": "cobyla"}, "accuracy_logarithmic.csv"),
-    (SEFactoriser, EfficentSU2AnsatzHandler(), "cobyla", "accuracy_squared.csv"),
-]
-service = QiskitRuntimeLocalService
-NOISE_MODELS = [
+RESULTS_PATH = "results"
+SEMIPRIMES = (
+    15, 21, 57, 123, 253, 511, 1011, 2047, 4087, 8189, 16379, 32743,
+    # 65509, 131069, 262099, 524281, 1048561
+)
+NOISELESS_FACTORISERS = (
+    # SobhaniFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+    SEFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+    LogarithmicFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+    InverseFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
+)
+service = QiskitRuntimeService()
+REAL_BACKENDS = [
+    (service.backend("ibm_brisbane"), "ibm_brisbane"),
+    (service.backend("ibm_sherbrooke"), "ibm_sherbrooke")
 ]
 
 
 class Tests:
-    RESULTS_PATH = "results"
-    SEMIPRIMES = (
-        15, 21, 57, 123
-    )
-    NOISELESS_FACTORISERS = (
-        SobhaniFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
-        SEFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
-    )
-
-    def save_to_csv(self, summary, file_name):
-        out_csv = os.path.join(self.RESULTS_PATH, file_name)
-        summary.to_csv(out_csv, index=False, mode='w', header=True)
-
     @pytest.mark.parametrize("factoriser", NOISELESS_FACTORISERS)
-    @pytest.mark.parametrize("n", SEMIPRIMES[:3])
+    @pytest.mark.parametrize("n", SEMIPRIMES)
     @pytest.mark.parametrize("csv_name", ["noiseless_baseline.csv"])
     def test_noiseless_baseline(self, factoriser, n, csv_name):
         # 4. Run the baseline test
         records = []
 
-        for run_id in range(2):
+        for run_id in range(50):
             factors = factoriser.factorise(n)
 
-            cost_history = factoriser.get_history_handler().get_history()
+            history_handler = factoriser.get_history_handler()
+
+            cost_history = history_handler.get_history()
             iterations = cost_history["iters"]
+            loop_times = history_handler.get_loop_times()
+            total_optimisation_time = history_handler.get_total_optimisation_time()
+            mean_loop_time = total_optimisation_time / len(loop_times)
+
             success = (factors is not None)
 
             records.append({
                 'run': run_id,
                 'iterations': iterations,
                 "final_energy": cost_history["cost_history"][-1],
+                'optimisation_time': mean_loop_time,
                 'success': success
             })
 
@@ -64,6 +65,7 @@ class Tests:
         summary = pd.DataFrame([{
             'factoriser': factoriser.__class__.__name__,
             'n': n,
+            'mean_optimisation_time':df['optimisation_time'].mean(),
             'mean_iterations': df['iterations'].mean(),
             'std_iterations': df['iterations'].std(),
             'mean_final_energy': df['final_energy'].mean(),
@@ -72,8 +74,10 @@ class Tests:
         }])
         FileManagement.noiseless_baseline_save_to_csv(summary, csv_name)
 
-    @pytest.mark.parametrize("optimiser", ["cobyla", "powell"])
-    @pytest.mark.parametrize("n", SEMIPRIMES[:3])
+    @pytest.mark.parametrize("optimiser", [
+        # "COBYLA",
+        "Powell"])
+    @pytest.mark.parametrize("n", SEMIPRIMES)
     @pytest.mark.parametrize("csv_name", ["optimiser_comparison.csv"])
     def test_optimiser_comparison(self, optimiser, n, csv_name):
         records = []
@@ -85,7 +89,7 @@ class Tests:
             AerSimulator()
         )
 
-        for run_id in range(1):
+        for run_id in range(50):
             factors = factoriser.factorise(n)
             # pull out history
             history_handler = factoriser.get_history_handler()
@@ -127,7 +131,7 @@ class Tests:
         FileManagement.optimiser_save_to_csv(summary, csv_name)
 
     @pytest.mark.parametrize("ansatz_handler", [EfficentSU2AnsatzHandler, ])
-    @pytest.mark.parametrize("n", SEMIPRIMES[:2])
+    @pytest.mark.parametrize("n", SEMIPRIMES)
     @pytest.mark.parametrize("reps", range(1, 4))
     @pytest.mark.parametrize("csv_name", ["ansatz_depth_comparison.csv"])
     def test_ansatz_circuit_depth(self, ansatz_handler: Type[AnsatzHandler], n, reps, csv_name):
@@ -140,7 +144,7 @@ class Tests:
             AerSimulator()
         )
 
-        for run_id in range(5):
+        for run_id in range(50):
             factors = factoriser.factorise(n)
             # pull out history
             history_handler = factoriser.get_history_handler()
@@ -155,7 +159,7 @@ class Tests:
             success = (factors is not None)
 
             records.append({
-                'ansatz':ansatz_handler.__name__,
+                'ansatz': ansatz_handler.__name__,
                 'reps': reps,
                 'n': n,
                 'run': run_id,
@@ -182,20 +186,94 @@ class Tests:
         )
         FileManagement.ansatz_depth_save_to_csv(summary, csv_name)
 
-    def test_shot_dependence(self, shots):
-        pass
+    @pytest.mark.parametrize("optimisation_shots", [1000, 5000, 10000, 20000, 50000])
+    @pytest.mark.parametrize("csv_name", ["shot_dependence.csv"])
+    @pytest.mark.parametrize("n", [1011])
+    def test_shot_dependence(self, optimisation_shots, csv_name, n):
+        records = []
 
-    def test_noise_robustness(self, backend_noise_model):
-        pass
+        factoriser = ExpectationSobhaniFactoriser(
+            EfficentSU2AnsatzHandler(),
+            "COBYLA",
+            HistoryHandler(),
+            AerSimulator(),
+            optimisation_shots=optimisation_shots
+        )
 
-    def test_scalability(self, n):
-        pass
+        for run_id in range(10):
+            factors = factoriser.factorise(n)
+            # pull out history
+            history_handler = factoriser.get_history_handler()
+            history = history_handler.get_history()
+            loop_times = factoriser.get_history_handler().get_loop_times()
+            total_optimisation_time = history_handler.get_total_optimisation_time()
 
-    def test_cvar_vs_standard_vqe(self, n):
-        pass
+            # metrics
+            iterations = history["iters"]
+            final_energy = history["cost_history"][-1]
+            mean_loop_time = total_optimisation_time / len(loop_times)
+            success = (factors is not None)
 
-    def test_real_hardware_(self, n):
-        pass
+            records.append({
+                'shots': optimisation_shots,
+                'n': n,
+                'run': run_id,
+                'iterations': iterations,
+                'final_energy': final_energy,
+                'mean_loop_time': mean_loop_time,
+                'success': success
+            })
+
+        df = pd.DataFrame(records)
+        summary = pd.DataFrame([{
+            'shots': optimisation_shots,
+            'n': n,
+            'mean_iterations': df['iterations'].mean(),
+            'std_iterations': df['iterations'].std(),
+            'mean_final_energy': df['final_energy'].mean(),
+            'std_final_energy': df['final_energy'].std(),
+            'success_rate': df['success'].mean()
+        }])
+
+        FileManagement.shot_dependence_save_to_csv(summary, csv_name)
+
+    @pytest.mark.parametrize("real_backend", REAL_BACKENDS[:1])
+    @pytest.mark.parametrize("n", SEMIPRIMES[:2])
+    @pytest.mark.parametrize("csv_name", ["noise_robustness.csv"])
+    def test_noise_robustness(self, real_backend, n, csv_name):
+        records = []
+        noise_model = NoiseModel.from_backend(real_backend[0])
+        simulator = AerSimulator(noise_model=noise_model)
+        factoriser = SEFactoriser(
+            EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), simulator, optimisation_shots=1024
+        )
+
+        for run_id in range(1):
+            factors = factoriser.factorise(n)
+            history = factoriser.get_history_handler().get_history()
+            iterations = history["iters"]
+            success = (factors is not None)
+            records.append({
+                'real_backend': real_backend[1],
+                'n': n,
+                'run': run_id,
+                'iterations': iterations,
+                'success': success
+            })
+
+        df = pd.DataFrame(records)
+        summary = (
+            df
+            .groupby(['real_backend', 'n'])
+            .agg(
+                mean_iterations=('iterations', 'mean'),
+                std_iterations=('iterations', 'std'),
+                success_rate=('success', 'mean')
+            )
+            .reset_index()
+        )
+        FileManagement.noise_robustness_save_to_csv(summary, csv_name)
+
 
 
 class FileManagement:
@@ -283,77 +361,57 @@ class FileManagement:
         # write back, overwriting the file
         merged.to_csv(out_csv, index=False)
         print(
-            f"→ Updated {out_csv} with {len(summary)} row(s) for {list(summary[['n', 'reps', 'ansatz']].itertuples(index=False, name=None))}")
-
-
-class _Tests:
-    @pytest.fixture(scope="module", autouse=True)
-    def cleanup_results_dir(self):
-        os.makedirs("results", exist_ok=True)
-        yield
-        # (optionally) clean up afterwards
-
-    @pytest.mark.parametrize("factoriser_class, ansatz_handler, optimiser, csv_name", FACTORISERS)
-    @pytest.mark.parametrize("n", TEST_VALUES)
-    def test_factoriser_accuracy(self, factoriser_class, ansatz_handler, optimiser, csv_name, n):
-        path = os.path.join("results", csv_name)
-        header = ["ansatz", "optimiser", "n", "accuracy"]
-        rows = self.get_result_file_rows(path, ansatz_handler, optimiser, n)
-        accuracy = self.run_test(factoriser_class, ansatz_handler, optimiser, n, attempts=10)
-        self.append_new_result(rows, ansatz_handler, optimiser, n, accuracy)
-        self.write_to_result_file(path, header, rows)
-
-    # @pytest.mark.parametrize("noise_model", [NoiseModel.from_backend(service.b)])
-    # @pytest.mark.parametrize("n", TEST_VALUES)
-    # def test_noise(self, noise_model, n):
-    #     path = os.path.join("results", "noise_test.csv")
-    #     header = ["ansatz", "optimiser", "n", "accuracy"]
-    #     rows = self.get_result_file_rows(path, ansatz_handler, optimiser, n)
-    #     accuracy = self.run_test(factoriser_class, ansatz_handler, optimiser, n, attempts=10)
-    #     self.append_new_result(rows, ansatz_handler, optimiser, n, accuracy)
-    #     self.write_to_result_file(path, header, rows)
-
-    @staticmethod
-    def run_test(factoriser_class, ansatz_handler, optimiser, n, attempts=1):
-        fac = factoriser_class(
-            ansatz_handler=ansatz_handler,
-            history_handler=BlankHistoryHandler(),
-            backend=AerSimulator(),
-            optimiser=optimiser
+            f"→ Updated {out_csv} with {len(summary)} row(s) for {list(summary[['n', 'reps', 'ansatz']].itertuples(index=False, name=None))}"
         )
-        successes = sum(1 for _ in range(attempts) if fac.factorise(n))
-        accuracy = f"{successes / attempts:.4f}"
-        return accuracy
 
-    @staticmethod
-    def get_result_file_rows(path, ansatz_handler, optimiser, n):
-        rows = []
-        if os.path.exists(path):
-            with open(path, newline="") as f_in:
-                reader = csv.DictReader(f_in)
-                for row in reader:
-                    if not (
-                            row["ansatz"] == ansatz_handler.__class__.__name__ and
-                            row["optimiser"] == optimiser and
-                            int(row["n"]) == n
-                    ):
-                        rows.append(row)
-        return rows
+    @classmethod
+    def shot_dependence_save_to_csv(cls, summary, file_name):
+        os.makedirs(cls.RESULTS_PATH, exist_ok=True)
+        out_csv = os.path.join(cls.RESULTS_PATH, file_name)
 
-    @staticmethod
-    def append_new_result(rows, ansatz_handler, optimiser, n, accuracy):
-        # 3) append the fresh result
-        rows.append({
-            "ansatz": ansatz_handler.__class__.__name__,
-            "optimiser": optimiser,
-            "n": str(n),
-            "accuracy": accuracy,
-        })
+        if os.path.exists(out_csv):
+            existing = pd.read_csv(out_csv)
 
-    @staticmethod
-    def write_to_result_file(path, header, rows):
-        # 4) write everything back
-        with open(path, "w", newline="") as f_out:
-            writer = csv.DictWriter(f_out, fieldnames=header)
-            writer.writeheader()
-            writer.writerows(rows)
+            to_drop = pd.concat([
+                existing["shots"].eq(row.shots) & existing["n"].eq(row.n)
+                for row in summary.itertuples()
+            ], axis=1).any(axis=1)
+
+            # keep only the non-matching rows
+            filtered = existing.loc[~to_drop]
+            # append the new summary row(s)
+            merged = pd.concat([filtered, summary], ignore_index=True)
+        else:
+            merged = summary
+
+        # write back, overwriting the file
+        merged.to_csv(out_csv, index=False)
+        print(
+            f"→ Updated {out_csv} with {len(summary)} row(s) for {list(summary[['shots', 'n']].itertuples(index=False, name=None))}"
+        )
+
+    @classmethod
+    def noise_robustness_save_to_csv(cls, summary, file_name):
+        os.makedirs(cls.RESULTS_PATH, exist_ok=True)
+        out_csv = os.path.join(cls.RESULTS_PATH, file_name)
+
+        if os.path.exists(out_csv):
+            existing = pd.read_csv(out_csv)
+
+            to_drop = pd.concat([
+                existing["real_backend"].eq(row.real_backend) & existing["n"].eq(row.n)
+                for row in summary.itertuples()
+            ], axis=1).any(axis=1)
+
+            # keep only the non-matching rows
+            filtered = existing.loc[~to_drop]
+            # append the new summary row(s)
+            merged = pd.concat([filtered, summary], ignore_index=True)
+        else:
+            merged = summary
+
+        # write back, overwriting the file
+        merged.to_csv(out_csv, index=False)
+        print(
+            f"→ Updated {out_csv} with {len(summary)} row(s) for {list(summary[['real_backend', 'n']].itertuples(index=False, name=None))}"
+        )

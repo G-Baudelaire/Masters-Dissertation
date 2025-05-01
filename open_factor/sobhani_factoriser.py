@@ -9,15 +9,33 @@ from open_factor.ansatz_handlers import LinearCNOTAnsatzHandler, AnsatzHandler
 from open_factor.factorisers import EigensolverFactoriser
 from open_factor.hamiltonian_handlers import HamiltonianHandler
 from open_factor.history_handlers import EnergyGrapherHistoryHandeler, HistoryHandler
-from open_factor.optimisation_handlers import EigensolverOptimisationHandler
+from open_factor.optimisation_handlers import CVaREigensolverOptimisationHandler, \
+    ExpectationEigensolverOptimisationHandler
 from open_factor.utils import Utils
 
 
-class SobhaniFactoriser(EigensolverFactoriser):
-    def __init__(self, ansatz_handler: AnsatzHandler, optimiser: str, history_handler: HistoryHandler, backend):
-        super().__init__(hamiltonian_handler=SobhaniHamiltonian(), ansatz_handler=ansatz_handler,
-                         optimisation_handler=EigensolverOptimisationHandler(optimiser), history_handler=history_handler,
-                         backend=backend)
+class ExpectationSobhaniFactoriser(EigensolverFactoriser):
+    def __init__(self, ansatz_handler: AnsatzHandler, optimiser: str, history_handler: HistoryHandler, backend,
+                 optimisation_shots=1024):
+        super().__init__(
+            hamiltonian_handler=SobhaniHamiltonian(),
+            ansatz_handler=ansatz_handler,
+            optimisation_handler=ExpectationEigensolverOptimisationHandler(optimiser, shots=optimisation_shots),
+            history_handler=history_handler,
+            backend=backend
+        )
+
+
+class CVaRSobhaniFactoriser(EigensolverFactoriser):
+    def __init__(
+            self, ansatz_handler: AnsatzHandler, optimiser: str, history_handler: HistoryHandler, backend,
+            optimisation_shots=1024
+    ):
+        super().__init__(
+            hamiltonian_handler=SobhaniHamiltonian(), ansatz_handler=ansatz_handler,
+            optimisation_handler=CVaREigensolverOptimisationHandler(optimiser, shots=optimisation_shots),
+            history_handler=history_handler, backend=backend
+        )
 
 
 class SobhaniHamiltonian(HamiltonianHandler):
@@ -77,46 +95,46 @@ class SobhaniHamiltonian(HamiltonianHandler):
         )
 
 
-class SobhaniOptimisationHandler(EigensolverOptimisationHandler):
-    def _cost_function(self, parameters, backend, hamiltonian, ansatz_isa, cost_history):
-        alpha = 1
-        shots = 1024
-        bound_circuit = ansatz_isa.assign_parameters(parameters)
-        bound_circuit.measure_all()
-        compiled_circuit = transpile(bound_circuit, backend=backend)
-        result = backend.run(compiled_circuit, shots=shots).result()
-        bitstrings = list(result.get_counts().keys())
-        eigenvalues = np.array([self.compute_eigenvalue(bitstring, hamiltonian).real for bitstring in bitstrings])
-        energy = self.compute_cvar(eigenvalues, alpha)
-
-        cost_history["iters"] += 1
-        cost_history["prev_vector"] = parameters
-        cost_history["cost_history"].append(energy)
-        return energy
-
-    def bit_value(self, bit, operator, term_value):
-        if operator == 'Z':
-            term_value *= 1 if bit == '0' else -1
-        # For other Pauli operators, include appropriate mapping or basis change here.
-        # e.g., for 'I' (identity), multiply by 1.
-        elif operator == 'I':
-            term_value *= 1
-        # You can extend this if your Hamiltonian includes other operators.
-        return term_value
-
-    def compute_eigenvalue(self, bitstring, hamiltonian: SparsePauliOp):
-        value = 0.0
-        # Loop over each term in the Hamiltonian
-        for operator, coefficient in hamiltonian.to_list():
-            term_value = 1.0
-            # Assume that the operator string length equals the bitstring length.
-            # Map each bit: for a Pauli-Z operator, we map '0' to +1 and '1' to -1.
-            for bit, bit_operator in zip(bitstring, operator):
-                term_value = self.bit_value(bit, bit_operator, term_value)
-            value += coefficient * term_value
-        return value
-
-    def compute_cvar(self, eigenvalues: np.ndarray, alpha):
-        eigenvalues.sort()
-        cutoff = max(1, int(eigenvalues.size * alpha))
-        return np.mean(eigenvalues[:cutoff])
+# class SobhaniOptimisationHandlerCVaR(CVaREigensolverOptimisationHandler):
+#     def _cost_function(self, parameters, backend, hamiltonian, ansatz_isa, cost_history):
+#         alpha = 1
+#         shots = 1024
+#         bound_circuit = ansatz_isa.assign_parameters(parameters)
+#         bound_circuit.measure_all()
+#         compiled_circuit = transpile(bound_circuit, backend=backend)
+#         result = backend.run(compiled_circuit, shots=shots).result()
+#         bitstrings = list(result.get_counts().keys())
+#         eigenvalues = np.array([self.compute_eigenvalue(bitstring, hamiltonian).real for bitstring in bitstrings])
+#         energy = self.compute_cvar(eigenvalues, alpha)
+#
+#         cost_history["iters"] += 1
+#         cost_history["prev_vector"] = parameters
+#         cost_history["cost_history"].append(energy)
+#         return energy
+#
+#     def bit_value(self, bit, operator, term_value):
+#         if operator == 'Z':
+#             term_value *= 1 if bit == '0' else -1
+#         # For other Pauli operators, include appropriate mapping or basis change here.
+#         # e.g., for 'I' (identity), multiply by 1.
+#         elif operator == 'I':
+#             term_value *= 1
+#         # You can extend this if your Hamiltonian includes other operators.
+#         return term_value
+#
+#     def compute_eigenvalue(self, bitstring, hamiltonian: SparsePauliOp):
+#         value = 0.0
+#         # Loop over each term in the Hamiltonian
+#         for operator, coefficient in hamiltonian.to_list():
+#             term_value = 1.0
+#             # Assume that the operator string length equals the bitstring length.
+#             # Map each bit: for a Pauli-Z operator, we map '0' to +1 and '1' to -1.
+#             for bit, bit_operator in zip(bitstring, operator):
+#                 term_value = self.bit_value(bit, bit_operator, term_value)
+#             value += coefficient * term_value
+#         return value
+#
+#     def compute_cvar(self, eigenvalues: np.ndarray, alpha):
+#         eigenvalues.sort()
+#         cutoff = max(1, int(eigenvalues.size * alpha))
+#         return np.mean(eigenvalues[:cutoff])

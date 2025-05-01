@@ -4,16 +4,19 @@ from qiskit import generate_preset_pass_manager
 
 from open_factor.ansatz_handlers import AnsatzHandler
 from open_factor.history_handlers import HistoryHandler
-from open_factor.optimisation_handlers import EigensolverOptimisationHandler, OptimisationHandler
+from open_factor.optimisation_handlers import CVaREigensolverOptimisationHandler, OptimisationHandler, Optimiser
 from open_factor.hamiltonian_handlers import HamiltonianHandler
 from open_factor.utils import Utils
 
 
 class Factoriser:
-    def __init__(self, ansatz_handler: AnsatzHandler, history_handler: HistoryHandler, backend):
+    def __init__(self, ansatz_handler: AnsatzHandler, history_handler: HistoryHandler, backend, optimisation_shots=1024,
+                 running_shots=1024):
         self._backend = backend
         self._ansatz_handler = ansatz_handler
         self._history_handler = history_handler
+        self._optimisation_shots = optimisation_shots
+        self._running_shots = running_shots
 
     @abstractmethod
     def factorise(self, n):
@@ -22,7 +25,7 @@ class Factoriser:
     def _run_circuit(self, n, ansatz, optimal_parameters):
         p_bits, q_bits = Utils.bits_needed(n)
         ansatz_isa = generate_preset_pass_manager(target=self._backend.target, optimization_level=3).run(ansatz)
-        result = Utils.run_optimised_circuit(ansatz_isa, optimal_parameters, self._backend, shots=10000)
+        result = Utils.run_optimised_circuit(ansatz_isa, optimal_parameters, self._backend, shots=self._running_shots)
         factors = Utils.check_bit_strings(n, result.get_counts().keys(), p_bits - 1, q_bits - 1)
         return factors
 
@@ -33,7 +36,7 @@ class Factoriser:
 class EigensolverFactoriser(Factoriser):
     def __init__(
             self, hamiltonian_handler: HamiltonianHandler, ansatz_handler: AnsatzHandler,
-            optimisation_handler: EigensolverOptimisationHandler, history_handler: HistoryHandler, backend
+            optimisation_handler, history_handler: HistoryHandler, backend
     ):
         super().__init__(ansatz_handler=ansatz_handler, history_handler=history_handler, backend=backend)
         self._hamiltonian_handler = hamiltonian_handler
@@ -49,8 +52,9 @@ class EigensolverFactoriser(Factoriser):
 
 class HybridFactoriser(Factoriser):
     def __init__(self, ansatz_handler: AnsatzHandler, optimisation_handler: OptimisationHandler,
-                 history_handler: HistoryHandler, backend):
-        super().__init__(ansatz_handler=ansatz_handler, history_handler=history_handler, backend=backend)
+                 history_handler: HistoryHandler, backend, optimisation_shots=1024):
+        super().__init__(ansatz_handler=ansatz_handler, history_handler=history_handler, backend=backend,
+                         optimisation_shots=optimisation_shots)
         self._optimisation_implementor = optimisation_handler
 
     def factorise(self, n):

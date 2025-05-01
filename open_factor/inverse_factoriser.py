@@ -13,9 +13,12 @@ from open_factor.optimisation_handlers import OptimisationHandler
 
 
 class InverseFactoriser(HybridFactoriser):
-    def __init__(self, ansatz_handler: AnsatzHandler, history_handler: HistoryHandler, optimiser: str, backend):
-        super().__init__(ansatz_handler=ansatz_handler, optimisation_handler=InverseOptimisationHandler(optimiser),
-                         history_handler=history_handler, backend=backend)
+    def __init__(self, ansatz_handler: AnsatzHandler, optimiser: str, history_handler: HistoryHandler, backend):
+        super().__init__(
+            ansatz_handler=ansatz_handler,
+            optimisation_handler=InverseOptimisationHandler(optimiser),
+            history_handler=history_handler,
+            backend=backend)
 
 
 class InverseOptimisationHandler(OptimisationHandler):

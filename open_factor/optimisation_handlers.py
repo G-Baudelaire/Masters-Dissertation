@@ -8,10 +8,10 @@ from qiskit.result import Result
 from scipy.optimize import minimize
 
 from open_factor.utils import Utils
-
+from qiskit.primitives import BackendEstimatorV2
 
 class Optimiser:
-    def __init__(self, optimiser, shots=1024, max_iterations=200, tol=1e-6):
+    def __init__(self, optimiser, shots=1024, max_iterations=500, tol=1):
         self._optimiser = optimiser
         self._shots = shots
         self._max_iterations = max_iterations
@@ -26,10 +26,7 @@ class Optimiser:
         cost_history["prev_vector"] = parameters
         cost_history["cost_history"].append(energy)
 
-
-class EigensolverOptimisationHandler(Optimiser):
-    # def __init__(self, optimiser):
-    #     self._optimiser = optimiser
+class CVaREigensolverOptimisationHandler(Optimiser):
     def optimise_parameters(self, hamiltonian, backend, ansatz):
         pass_manager = generate_preset_pass_manager(target=backend.target, optimization_level=3)
 
@@ -53,8 +50,7 @@ class EigensolverOptimisationHandler(Optimiser):
     # def optimise_parameters(self, hamiltonian, backend, ansatz) -> (Result, dict):
     #     raise NotImplementedError()
 
-    def _cost_function(self, parameters, backend, hamiltonian, ansatz_isa, cost_history):
-        alpha = 1
+    def _cost_function(self, parameters, backend, hamiltonian, ansatz_isa, cost_history, alpha=0.05):
         result = Utils.run_optimised_circuit(ansatz_isa, parameters, backend, self._shots)
         bitstrings = list(result.get_counts().keys())
         eigenvalues = np.array([self.compute_eigenvalue(bitstring, hamiltonian).real for bitstring in bitstrings])
@@ -63,32 +59,82 @@ class EigensolverOptimisationHandler(Optimiser):
         self._update_cost_history(cost_history, parameters, energy)
         return energy
 
-    def bit_value(self, bit, operator, term_value):
+    def bit_value(self, bit, operator):
         if operator == 'Z':
-            term_value *= 1 if bit == '0' else -1
-        # For other Pauli operators, include appropriate mapping or basis change here.
-        # e.g., for 'I' (identity), multiply by 1.
+            return 1 if bit == '0' else -1
         elif operator == 'I':
-            term_value *= 1
-        # You can extend this if your Hamiltonian includes other operators.
-        return term_value
+            return 1
+        return 0  # If operator is not handled
 
     def compute_eigenvalue(self, bitstring, hamiltonian: SparsePauliOp):
         value = 0.0
-        # Loop over each term in the Hamiltonian
-        for operator, coefficient in hamiltonian.to_list():
-            term_value = 1.0
-            # Assume that the operator string length equals the bitstring length.
-            # Map each bit: for a Pauli-Z operator, we map '0' to +1 and '1' to -1.
-            for bit, bit_operator in zip(bitstring, operator):
-                term_value = self.bit_value(bit, bit_operator, term_value)
-            value += coefficient * term_value
+        for pauli_str, coeff in hamiltonian.to_list():
+            term_val = np.prod([
+                self.bit_value(bit, op)
+                for bit, op in zip(bitstring, pauli_str)
+            ])
+            value += coeff.real * term_val
         return value
 
-    def compute_cvar(self, eigenvalues: np.ndarray, alpha):
-        eigenvalues.sort()
-        cutoff = max(1, int(eigenvalues.size * alpha))
-        return np.mean(eigenvalues[:cutoff])
+    def compute_cvar(self, eigenvalues: np.ndarray, alpha: float):
+        sorted_vals = np.sort(eigenvalues)
+        cutoff = max(1, int(len(sorted_vals) * alpha))
+        return np.mean(sorted_vals[:cutoff])
+
+class ExpectationEigensolverOptimisationHandler(Optimiser):
+    def optimise_parameters(self, hamiltonian, backend, ansatz):
+
+        pass_manager = generate_preset_pass_manager(target=backend.target, optimization_level=3)
+
+        ansatz_isa = pass_manager.run(ansatz)
+        initial_parameters = 2 * np.pi * np.random.random(ansatz.num_parameters)
+        cost_history_dictionary = self._initialise_cost_history_dict()
+        bounds = [(0, 2 * np.pi)] * ansatz.num_parameters
+
+        result = minimize(
+            self._cost_function,
+            initial_parameters,
+            args=(backend, hamiltonian, ansatz_isa, cost_history_dictionary),
+            method=self._optimiser,
+            bounds=bounds,
+            options={"maxiter": self._max_iterations},
+            tol=self._tol
+        )
+
+        return result, cost_history_dictionary
+
+    # def optimise_parameters(self, hamiltonian, backend, ansatz) -> (Result, dict):
+    #     raise NotImplementedError()
+
+    def _cost_function(self, parameters, backend, hamiltonian, ansatz_isa, cost_history):
+        estimator = BackendEstimatorV2(backend=backend, options={"shots": 1024})
+        job = estimator.run(
+            circuits=[ansatz_isa],
+            observables=[hamiltonian],
+            parameter_values=[parameters]
+        )
+        energy = job.result().values[0]
+
+
+        self._update_cost_history(cost_history, parameters, energy)
+        return energy
+
+    def bit_value(self, bit, operator):
+        if operator == 'Z':
+            return 1 if bit == '0' else -1
+        elif operator == 'I':
+            return 1
+        return 0  # If operator is not handled
+
+    def compute_eigenvalue(self, bitstring, hamiltonian: SparsePauliOp):
+        value = 0.0
+        for pauli_str, coeff in hamiltonian.to_list():
+            term_val = np.prod([
+                self.bit_value(bit, op)
+                for bit, op in zip(bitstring, pauli_str)
+            ])
+            value += coeff.real * term_val
+        return value
 
 
 class OptimisationHandler(Optimiser):
