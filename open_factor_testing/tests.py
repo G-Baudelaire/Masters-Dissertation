@@ -6,10 +6,12 @@ import pytest
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel
 
-from open_factor.ansatz_handlers import EfficentSU2AnsatzHandler, AnsatzHandler
+from open_factor.ansatz_handlers import EfficentSU2AnsatzHandler, AnsatzHandler, NLocalAnsatzHandler, \
+    RealAmplitudesAnsatzHandler
 from open_factor.exponential_penalty_factoriser import ExponentialFactoriser
+from open_factor.factorisers import HybridFactoriser
 from open_factor.history_handlers import BlankHistoryHandler, HistoryHandler
-from open_factor.inverse_factoriser import InverseFactoriser
+from open_factor.inverse_factoriser import InverseFactoriser, InverseOptimisationHandler
 from open_factor.logarithmic_factoriser import LogarithmicFactoriser
 from open_factor.sobhani_factoriser import SobhaniHamiltonian, ExpectationSobhaniFactoriser
 from open_factor.squared_error_factoriser import SEFactoriser
@@ -19,8 +21,10 @@ from open_factor.tanh_squared_factoriser import TanhSquaredFactoriser
 
 RESULTS_PATH = "results"
 SEMIPRIMES = (
-    15, 21, 57, 123, 253, 511, 1011, 2047, 4087, 8189, 16379,
-    # 32743, 65509, 131069, 262099, 524281, 1048561
+    # 15, 21, 57, 123, 253, 511, 1011,
+    # 2047,
+    4087, 8189,
+    # 16379, 32743, 65509, 131069, 262099, 524281, 1048561
 )
 NOISELESS_FACTORISERS = (
     # ExpectationSobhaniFactoriser(EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), AerSimulator()),
@@ -135,9 +139,12 @@ class Tests:
         )
         FileManagement.optimiser_save_to_csv(summary, csv_name)
 
-    @pytest.mark.parametrize("ansatz_handler", [EfficentSU2AnsatzHandler, ])
+    @pytest.mark.parametrize("ansatz_handler", [
+        EfficentSU2AnsatzHandler,
+        RealAmplitudesAnsatzHandler
+                             ])
     @pytest.mark.parametrize("n", SEMIPRIMES)
-    @pytest.mark.parametrize("reps", range(1, 4))
+    @pytest.mark.parametrize("reps", range(3, 4))
     @pytest.mark.parametrize("csv_name", ["ansatz_depth_comparison.csv"])
     def test_ansatz_circuit_depth(self, ansatz_handler: Type[AnsatzHandler], n, reps, csv_name):
         records = []
@@ -191,18 +198,18 @@ class Tests:
         )
         FileManagement.ansatz_depth_save_to_csv(summary, csv_name)
 
-    @pytest.mark.parametrize("optimisation_shots", [1000, 5000, 10000, 20000, 50000])
+    @pytest.mark.parametrize("optimisation_shots", [1000, 5000, 10000, 20000])
     @pytest.mark.parametrize("csv_name", ["shot_dependence.csv"])
-    @pytest.mark.parametrize("n", [1011])
+    @pytest.mark.parametrize("n", [2047])
     def test_shot_dependence(self, optimisation_shots, csv_name, n):
         records = []
 
-        factoriser = ExpectationSobhaniFactoriser(
+        factoriser = HybridFactoriser(
             EfficentSU2AnsatzHandler(),
-            "COBYLA",
+            InverseOptimisationHandler("COBYLA",shots=optimisation_shots),
             HistoryHandler(),
             AerSimulator(),
-            optimisation_shots=optimisation_shots
+
         )
 
         for run_id in range(10):
@@ -243,14 +250,20 @@ class Tests:
         FileManagement.shot_dependence_save_to_csv(summary, csv_name)
 
     @pytest.mark.parametrize("real_backend", REAL_BACKENDS[:1])
-    @pytest.mark.parametrize("n", SEMIPRIMES[:2])
+    @pytest.mark.parametrize("n", [2047])
     @pytest.mark.parametrize("csv_name", ["noise_robustness.csv"])
     def test_noise_robustness(self, real_backend, n, csv_name):
         records = []
         noise_model = NoiseModel.from_backend(real_backend[0])
         simulator = AerSimulator(noise_model=noise_model)
-        factoriser = SEFactoriser(
-            EfficentSU2AnsatzHandler(), "COBYLA", HistoryHandler(), simulator, optimisation_shots=1024
+        # factoriser = HybridFactoriser(
+        #     EfficentSU2AnsatzHandler(3), "COBYLA", HistoryHandler(), simulator, optimisation_shots=1024
+        # )
+        factoriser = HybridFactoriser(
+            EfficentSU2AnsatzHandler(),
+            InverseOptimisationHandler("COBYLA",shots=5000),
+            HistoryHandler(),
+            simulator,
         )
 
         for run_id in range(1):
@@ -352,7 +365,7 @@ class FileManagement:
             # build a mask of rows to drop from existing:
             # any existing row whose (n, optimiser) tuple appears in summary
             to_drop = pd.concat([
-                existing["ansatz"].eq(row.ansatz) & existing["n"].eq(row.n)
+                existing["ansatz"].eq(row.ansatz) & existing["n"].eq(row.n) & existing["reps"].eq(row.reps)
                 for row in summary.itertuples()
             ], axis=1).any(axis=1)
 

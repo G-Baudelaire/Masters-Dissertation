@@ -2,7 +2,7 @@ from abc import abstractmethod
 
 from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterVector
-from qiskit.circuit.library import EfficientSU2
+from qiskit.circuit.library import EfficientSU2, RealAmplitudes, NLocal, QAOAAnsatz
 
 from open_factor.utils import Utils
 
@@ -57,3 +57,17 @@ class EfficentSU2AnsatzHandler(AnsatzHandler):
         p_bits, q_bits = Utils.bits_needed(n)
         number_of_qubits = p_bits + q_bits - 2
         return EfficientSU2(num_qubits=number_of_qubits, reps=self._reps)
+
+class RealAmplitudesAnsatzHandler(AnsatzHandler):
+    def get_ansatz(self, n):
+        p_bits, q_bits = Utils.bits_needed(n)
+        number_of_qubits = p_bits + q_bits - 2
+        return RealAmplitudes(num_qubits=number_of_qubits, reps=self._reps)
+
+class NLocalAnsatzHandler(AnsatzHandler):
+    def get_ansatz(self, n):
+        p_bits, q_bits = Utils.bits_needed(n)
+        number_of_qubits = p_bits + q_bits - 2
+        return NLocal(num_qubits=number_of_qubits, reps=self._reps)
+
+

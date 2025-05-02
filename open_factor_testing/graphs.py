@@ -2,18 +2,11 @@ import csv
 import os.path
 
 import matplotlib.pyplot as plt
-from IPython.core.display_functions import display
-from matplotlib.pyplot import xscale
-from qiskit import QuantumCircuit
+import pandas as pd
 
 from open_factor.ansatz_handlers import EfficentSU2AnsatzHandler
 from open_factor.utils import Utils
 
-import csv
-import matplotlib.pyplot as plt
-
-
-# Assuming EfficentSU2AnsatzHandler and Utils are already defined somewhere
 
 def make_graph_of_efficient_su_squared_error_cobyla(path):
     with open(path, newline="") as f_in:
@@ -40,51 +33,176 @@ def make_graph_of_efficient_su_squared_error_cobyla(path):
         plt.show()
         print(x, y)
 
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
 
-def make_basic_circuit_image():
-    qc = QuantumCircuit(1)
-    qc.x(0)
-    qc.measure_all()
-    qc.draw(output="mpl", scale=4.0).show()
+def draw_shot_dependence_graph():
+    # Load your data
+    df = pd.read_csv(os.path.join("results", "shot_dependence.csv"))
 
-    qc = QuantumCircuit(2)
-    qc.y(0)
-    qc.cx(0, 1)
-    qc.measure_all()
-    qc.draw(output="mpl", scale=4.0).show()
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    # Plot one line per 'n'
+    for n_value, group in df.groupby('n'):
+        group = group.sort_values('shots')
+        ax.plot(
+            group['shots'],
+            group['success_rate'],
+            marker='o',
+            label=f"n = {n_value}"
+        )
+
+    # Logarithmic x‐axis that still allows zero
+    # ax.set_xscale('symlog', linthresh=1)
+
+    # Force origin at (0,0) and cap y at 1
+    ax.set_xlim(left=0, right=df['shots'].max() * 1.1)
+    ax.set_ylim(0, 1)
+
+    ax.set_xlabel('Number of shots')
+    ax.set_ylabel('Success Rate')
+    ax.set_title('Success Rate vs. Number of Shots for Different $n$')
+    ax.legend(title='Semiprime $n$')
+    ax.grid(True, which='both', linestyle='--', alpha=0.5)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def draw_ansatz_depth_graph():
+    df = pd.read_csv(os.path.join("results", "ansatz_depth_comparison.csv"))
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    for (ansatz, reps), group in df.groupby(['ansatz', 'reps']):
+        group = group.sort_values('n')
+        ax.plot(
+            group['n'],
+            group['success_rate'],
+            marker='o',
+            label=f"{ansatz}, reps={reps}"
+        )
+
+    ax.set_xlabel('n')
+    ax.set_ylabel('Success Rate')
+
+    # use a logarithmic x‐axis
+    ax.set_xscale('log')
+    ax.set_xlim(left=df['n'].min(), right=df['n'].max())
+
+    ax.set_ylim(bottom=0, top=1)
+
+    ax.legend(title='Ansatz & Reps')
+    ax.grid(True, linestyle='--', alpha=0.5)
+    # get current limits
+    xmin, xmax = ax.get_xlim()
+
+    # bump the right edge up by one decade (×10)
+    ax.set_xlim(xmin, xmax * 10)
+    plt.tight_layout()
+    plt.show()
 
 
 def draw_noiseless_baseline_graph():
-    import pandas as pd
-    import matplotlib.pyplot as plt
-
-    # 1. Read the CSV
     df = pd.read_csv(os.path.join("results", "noiseless_baseline.csv"))
 
-    # 2. Pivot to get one column per factoriser
     pivot = df.pivot(
         index="n",
         columns="factoriser",
         values="success_rate"
     )
 
-    # 3. Plot directly
     ax = pivot.plot(
         kind="line",
         marker="o",
         figsize=(8, 5)
     )
 
-    # 4. Labels & title
     ax.set_xlabel("n")
     ax.set_ylabel("Success Rate")
     ax.set_title("Success Rate vs n by Factoriser")
-    ax.grid(True)
 
+    # use a logarithmic x‐axis
+    ax.set_xscale('log')
+    ax.set_xlim(left=df['n'].min(), right=df['n'].max())
+
+    ax.set_ylim(bottom=0, top=1)
+    ax.grid(True)
+    # get current limits
+    xmin, xmax = ax.get_xlim()
+
+    # bump the right edge up by one decade (×10)
+    ax.set_xlim(xmin, xmax * 10)
     plt.tight_layout()
     plt.show()
 
 
+
+#
+# def draw_noiseless_baseline_graph():
+#     df = pd.read_csv(os.path.join("results", "noiseless_baseline.csv"))
+#
+#     # 2. Pivot to get one column per factoriser
+#     pivot = df.pivot(
+#         index="n",
+#         columns="factoriser",
+#         values="success_rate"
+#     )
+#
+#     # 3. Plot directly
+#     ax = pivot.plot(
+#         kind="line",
+#         marker="o",
+#         figsize=(8, 5)
+#     )
+#
+#     # 4. Labels & title
+#     ax.set_xlabel("n")
+#     ax.set_ylabel("Success Rate")
+#     ax.set_title("Success Rate vs n by Factoriser")
+#     ax.grid(True)
+#
+#     # 5. Force axes to start at (0, 0)
+#     ax.set_xlim(left=0)
+#     ax.set_ylim(bottom=0)
+#
+#     plt.tight_layout()
+#     plt.show()
+#
+# def draw_ansatz_depth_graph():
+#     df = pd.read_csv(os.path.join("results", "ansatz_depth_comparison.csv"))
+#
+#     # Create the plot
+#     fig, ax = plt.subplots(figsize=(8, 6))
+#
+#     # Group by ansatz and reps and plot each as a separate line
+#     for (ansatz, reps), group in df.groupby(['ansatz', 'reps']):
+#         group = group.sort_values('n')
+#         ax.plot(
+#             group['n'],
+#             group['success_rate'],
+#             marker='o',
+#             label=f"{ansatz}, reps={reps}"
+#         )
+#
+#     # Set axis labels
+#     ax.set_xlabel('n')
+#     ax.set_ylabel('Success Rate')
+#
+#     # Force axes to start at (0,0)
+#     ax.set_xlim(left=0)
+#     ax.set_ylim(bottom=0)
+#
+#     # Add legend and grid
+#     ax.legend(title='Ansatz & Reps')
+#     ax.grid(True, linestyle='--', alpha=0.5)
+#
+#     plt.tight_layout()
+#     plt.show()
+
 if __name__ == '__main__':
     # make_graph_of_efficient_su_squared_error_cobyla(os.path.join("results", "accuracy_squared.csv"))
-    draw_noiseless_baseline_graph()
+    # draw_noiseless_baseline_graph()
+    # draw_ansatz_depth_graph()
+    draw_shot_dependence_graph()

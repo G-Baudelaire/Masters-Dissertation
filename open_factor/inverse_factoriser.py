@@ -22,8 +22,8 @@ class InverseFactoriser(HybridFactoriser):
 
 
 class InverseOptimisationHandler(OptimisationHandler):
-    def __init__(self, optimiser):
-        super().__init__(optimiser=optimiser)
+    def __init__(self, optimiser, shots=1024):
+        super().__init__(optimiser=optimiser, shots=shots)
 
     def _f_cost_function(self, n, p, q):
         return -1 / ((math.fabs(n - p * q)) + 0.001)
